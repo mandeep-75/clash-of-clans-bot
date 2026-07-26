@@ -59,3 +59,6 @@ python main.py --device <DEVICE_ID>
 python main.py --webhook <URL>
 ```
 
+
+---
+*Auto-sync: 2026-07-26 11:03*

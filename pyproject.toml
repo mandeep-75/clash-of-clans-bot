@@ -1,0 +1,14 @@
+[project]
+name = "clash-of-clans-bot"
+version = "0.1.0"
+description = "Automated Clash of Clans bot using OpenCV and OCR"
+requires-python = ">=3.11"
+dependencies = [
+    "opencv-python",
+    "easyocr",
+    "numpy",
+    "Pillow",
+    "ruff",
+    "black",
+    "mypy",
+]

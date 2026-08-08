@@ -1,6 +1,0 @@
-Model: qwen3.5:0.8b
-Total tested: 1
-JSON parse success: 0/1 (0%)
-Upgrade button found: 0/1 (0%)
-Avg inference time: 1.1s
-Result: FAIL

@@ -4,4 +4,4 @@ screen.png
 __pycache__/
 match_tool/__pycache__/
 match_tool/screenshots/
-.venv/
+.venv/bot_session_log.txt

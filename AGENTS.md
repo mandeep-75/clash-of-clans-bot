@@ -8,7 +8,7 @@ This is a Python CLI bot that automates attacks in Clash of Clans using ADB and 
 
 ### Install Dependencies
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ### Running the Bot

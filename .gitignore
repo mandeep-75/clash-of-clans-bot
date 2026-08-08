@@ -1,1 +1,5 @@
-coc_env
+coc_envscreen.png
+.playwright-mcp/
+__pycache__/
+match_tool/__pycache__/
+match_tool/screenshots/

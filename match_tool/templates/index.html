@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoC OpenCV Match Tool</title>
+  <style>
+    :root {
+      --bg: #1a1d24;
+      --panel: #232833;
+      --border: #343a47;
+      --text: #e6e9ef;
+      --muted: #8f96a5;
+      --accent: #4f8cff;
+      --green: #34d17b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 18px;
+      background: var(--panel);
+      border-bottom: 1px solid #343a47;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 16px; font-weight: 600; margin-right: 8px; }
+    .btn {
+      background: #2b3240;
+      color: var(--text);
+      border: 1px solid #343a47;
+      border-radius: 6px;
+      padding: 7px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    select, input[type="number"] {
+      background: #2b3240;
+      color: var(--text);
+      border: 1px solid #343a47;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    main { display: flex; gap: 14px; padding: 14px; flex-wrap: wrap; }
+    #canvasWrap {
+      flex: 1 1 720px;
+      min-width: 320px;
+      background: var(--panel);
+      border: 1px solid #343a47;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    .hint { margin-bottom: 8px; font-size: 12px; color: var(--accent); }
+    #stage { max-height: 82vh; overflow: auto; background: #14161c; border-radius: 6px; }
+    canvas { display: block; cursor: crosshair; }
+    #sidebar { flex: 0 1 340px; display: flex; flex-direction: column; gap: 12px; }
+    .card { background: var(--panel); border: 1px solid #343a47; border-radius: 8px; padding: 12px; }
+    .card h2 { font-size: 13px; margin-bottom: 10px; color: var(--accent); }
+    .row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 8px; }
+    .row label { min-width: 90px; color: var(--muted); }
+    .muted { color: var(--muted); font-size: 12px; }
+    #score, .s { color: var(--green); }
+    #matches { list-style: none; max-height: 300px; overflow: auto; font-size: 12px; }
+    #matches li {
+      display: flex; justify-content: space-between;
+      padding: 5px 8px; border-bottom: 1px solid #2b3240; cursor: pointer;
+    }
+    #matches li:hover { background: #2b3240; }
+    .statusbar { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; }
+    input[type="range"] { flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CoC Match Tool</h1>
+    <select id="deviceSelect"></select>
+    <button class="btn" id="pullBtn">Pull screenshot</button>
+    <button class="btn" id="uploadBtn">Load local PNG</button>
+    <input type="file" id="uploadInput" accept="image/png,image/jpeg" hidden>
+    <div class="row" style="margin-left:auto; margin-bottom:0;">
+      <label>Zoom</label>
+      <button class="btn" id="zoomOutBtn" title="Zoom out">&#8722;</button>
+      <button class="btn" id="zoomResetBtn" title="Fit to screen">1x</button>
+      <button class="btn" id="zoomInBtn" title="Zoom in">+</button>
+      <span id="zoomVal" style="min-width:48px; text-align:center;">100%</span>
+    </div>
+    <div class="row" style="margin-bottom:0;">
+      <label>Threshold</label>
+      <input type="range" id="threshold" min="0.3" max="1" step="0.01" value="0.8">
+      <span id="thresholdVal">0.80</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="canvasWrap">
+      <div class="hint">Drag on the image to draw a crop &#8212; matches update live.</div>
+      <div id="stage">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div class="statusbar">
+        <span id="imgInfo">No image loaded</span>
+        <span id="matchesCount">0 matches</span>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <div class="card">
+        <h2>Match settings</h2>
+        <div class="row"><label>Top score</label><span id="score">-</span></div>
+        <div class="row"><label>Crop</label><span id="cropInfo" class="muted">drag on image</span></div>
+        <div class="row"><label>Method</label><span class="muted">TM_CCOEFF_NORMED</span></div>
+      </div>
+      <div class="card">
+        <h2>Matches (<span id="matchCountHead">0</span>)</h2>
+        <ul id="matches"></ul>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const deviceSelect = document.getElementById('deviceSelect');
+    const thresholdInput = document.getElementById('threshold');
+    const thresholdVal = document.getElementById('thresholdVal');
+
+    let imgObj = null;
+    let imgDims = { w: 0, h: 0 };
+    let fitScale = 1;
+    let zoom = 1;
+    let crop = null;
+    let matches = [];
+    let dragging = false;
+    let panning = false;
+    let matchTimeout = null;
+    let pinchDist = 0;
+
+    const displayScale = () => fitScale * zoom;
+
+    const clampZoom = (z) => Math.min(40, Math.max(0.25, z));
+
+    const pointerPos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const s = displayScale();
+      return {
+        x: Math.min(imgDims.w, Math.max(0, (cx - rect.left) / s)),
+        y: Math.min(imgDims.h, Math.max(0, (cy - rect.top) / s)),
+      };
+    };
+
+    function currentRect() {
+      if (!crop) return null;
+      return {
+        x: Math.round(Math.min(crop.x1, crop.x2)),
+        y: Math.round(Math.min(crop.y1, crop.y2)),
+        w: Math.round(Math.abs(crop.x2 - crop.x1)),
+        h: Math.round(Math.abs(crop.y2 - crop.y1)),
+      };
+    }
+
+    function fetchMatches() {
+      const rect = currentRect();
+      if (!rect || rect.w < 2 || rect.h < 2) return;
+      fetch('/api/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crop: rect, threshold: parseFloat(thresholdInput.value) }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          matches = data.matches || [];
+          document.getElementById('cropInfo').textContent = `${rect.x},${rect.y} ${rect.w}x${rect.h}`;
+          updateMatchList();
+          draw();
+        })
+        .catch(() => {});
+    }
+
+    function deferredFetch() {
+      clearTimeout(matchTimeout);
+      matchTimeout = setTimeout(fetchMatches, 180);
+    }
+
+    function updateMatchList() {
+      const list = document.getElementById('matches');
+      const count = document.getElementById('matchesCount');
+      const head = document.getElementById('matchCountHead');
+      const score = document.getElementById('score');
+      list.innerHTML = '';
+      count.textContent = `${matches.length} matches`;
+      head.textContent = matches.length;
+      score.textContent = matches.length ? matches[0].score.toFixed(3) : '-';
+      if (!matches.length) {
+        list.innerHTML = '<li class="muted" style="cursor:default">No matches above threshold</li>';
+        return;
+      }
+      matches.forEach((m, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>#${i + 1} (${m.center_x},${m.center_y})</span><span class="s">${m.score.toFixed(3)}</span>`;
+        li.onclick = () => {
+          crop = { x1: m.x, y1: m.y, x2: m.x + m.w, y2: m.y + m.h };
+          draw();
+          fetchMatches();
+        };
+        list.appendChild(li);
+      });
+    }
+
+    function draw() {
+      if (!imgObj) return;
+      const s = displayScale();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(imgObj, 0, 0, imgDims.w * s, imgDims.h * s);
+
+      if (crop) {
+        const x = Math.min(crop.x1, crop.x2) * s;
+        const y = Math.min(crop.y1, crop.y2) * s;
+        const w = Math.abs(crop.x2 - crop.x1) * s;
+        const h = Math.abs(crop.y2 - crop.y1) * s;
+        ctx.strokeStyle = 'rgba(79,140,255,0.95)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(79,140,255,0.06)';
+        ctx.fillRect(x, y, w, h);
+      }
+
+      ctx.lineWidth = 2;
+      for (const m of matches) {
+        const x = m.x * s, y = m.y * s, w = m.w * s, h = m.h * s;
+        ctx.strokeStyle = 'rgba(52,209,123,0.95)';
+        ctx.strokeRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(52,209,123,0.9)';
+        ctx.font = `${Math.max(10, 11 / Math.max(1, zoom))}px monospace`;
+        ctx.fillText(m.score.toFixed(2), x + 2, y - 2);
+      }
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      dragging = true;
+      const p = pointerPos(e);
+      crop = { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+      draw();
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const p = pointerPos(e);
+      crop.x2 = p.x;
+      crop.y2 = p.y;
+      draw();
+      deferredFetch();
+    });
+    window.addEventListener('mouseup', () => { dragging = false; });
+
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      dragging = true;
+      const p = pointerPos(e);
+      crop = { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+      draw();
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!dragging) return;
+      const p = pointerPos(e);
+      crop.x2 = p.x;
+      crop.y2 = p.y;
+      draw();
+      deferredFetch();
+    }, { passive: false });
+    canvas.addEventListener('touchend', () => { dragging = false; });
+
+    thresholdInput.addEventListener('input', () => {
+      thresholdVal.textContent = parseFloat(thresholdInput.value).toFixed(2);
+      if (crop) fetchMatches();
+    });
+
+    function updateZoomUI() {
+      document.getElementById('zoomVal').textContent = `${Math.round(zoom * 100)}%`;
+    }
+
+    function applyZoom() {
+      const s = displayScale();
+      canvas.width = imgDims.w * s;
+      canvas.height = imgDims.h * s;
+      updateZoomUI();
+      draw();
+    }
+
+    function setZoom(z) {
+      zoom = clampZoom(z);
+      applyZoom();
+    }
+
+    function loadImage(src) {
+      imgObj = new Image();
+      imgObj.onload = () => {
+        imgDims = { w: imgObj.naturalWidth, h: imgObj.naturalHeight };
+        const vw = document.getElementById('canvasWrap').clientWidth - 24;
+        const maxH = window.innerHeight * 0.7;
+        fitScale = Math.min(1, vw / imgDims.w, maxH / imgDims.h);
+        zoom = 1;
+        canvas.width = imgDims.w * fitScale;
+        canvas.height = imgDims.h * fitScale;
+        crop = null;
+        matches = [];
+        document.getElementById('imgInfo').textContent = `${imgDims.w}x${imgDims.h}`;
+        window.scrollTo(0, 0);
+        updateZoomUI();
+        draw();
+        updateMatchList();
+      };
+      imgObj.src = src;
+    }
+
+    // zoom helpers / listeners
+    function zoomAt(factor) {
+      const sBefore = displayScale();
+      setZoom(zoom * factor);
+      const sAfter = displayScale();
+      if (sAfter === sBefore) return;
+      const rect = canvas.getBoundingClientRect();
+      const stage = document.getElementById('stage');
+      const cx = canvas._lastPX !== undefined ? canvas._lastPX : rect.left + rect.width / 2;
+      const cy = canvas._lastPY !== undefined ? canvas._lastPY : rect.top + rect.height / 2;
+      const mx = cx - rect.left;
+      const my = cy - rect.top;
+      const px = mx + stage.scrollLeft;
+      const py = my + stage.scrollTop;
+      stage.scrollLeft = px * (sAfter / sBefore) - mx;
+      stage.scrollTop = py * (sAfter / sBefore) - my;
+    }
+
+    document.getElementById('zoomInBtn').onclick = () => zoomAt(1.25);
+    document.getElementById('zoomOutBtn').onclick = () => zoomAt(0.8);
+    document.getElementById('zoomResetBtn').onclick = () => setZoom(1);
+
+    const stageEl = document.getElementById('stage');
+    stageEl.addEventListener('wheel', (e) => {
+      if (!imgObj) return;
+      if (!e.ctrlKey && !e.metaKey) return; // plain wheel scrolls to pan
+      e.preventDefault();
+      canvas._lastPX = e.clientX;
+      canvas._lastPY = e.clientY;
+      if (e.deltaY < 0) zoomAt(1.15);
+      else zoomAt(0.87);
+    }, { passive: false });
+
+    document.getElementById('stage').addEventListener('mousemove', (e) => {
+      canvas._lastPX = e.clientX;
+      canvas._lastPY = e.clientY;
+    });
+
+    function refreshDevices() {
+      fetch('/api/devices').then(r => r.json()).then(d => {
+        deviceSelect.innerHTML = '';
+        if (!d.devices.length) {
+          deviceSelect.innerHTML = '<option>No device connected</option>';
+          return;
+        }
+        d.devices.forEach(id => {
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = id;
+          deviceSelect.appendChild(opt);
+        });
+      });
+    }
+    refreshDevices();
+
+    loadImage('/api/image?' + Date.now());
+
+    document.getElementById('pullBtn').onclick = () => {
+      const btn = document.getElementById('pullBtn');
+      btn.disabled = true;
+      btn.textContent = 'Pulling...';
+      fetch('/api/pull_screenshot?device=' + encodeURIComponent(deviceSelect.value))
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          loadImage('/api/image?' + Date.now());
+        })
+        .catch(err => alert(err))
+        .finally(() => { btn.disabled = false; btn.textContent = 'Pull screenshot'; });
+    };
+
+    document.getElementById('uploadBtn').onclick = () => document.getElementById('uploadInput').click();
+    document.getElementById('uploadInput').onchange = (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const fd = new FormData();
+      fd.append('file', f);
+      fetch('/api/upload_image', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          loadImage('/api/image?' + Date.now());
+        });
+    };
+  </script>
+</body>
+</html>

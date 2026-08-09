@@ -31,6 +31,14 @@
       flex-wrap: wrap;
     }
     header h1 { font-size: 16px; font-weight: 600; margin-right: 8px; }
+    .tabs { display: flex; gap: 4px; margin-left: 4px; }
+    .tab-btn {
+      background: transparent; color: var(--muted); border: 1px solid transparent;
+      border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
+    }
+    .tab-btn:hover { color: var(--text); background: #2b3240; }
+    .tab-btn.active { color: var(--text); background: #2b3240; border-color: #343a47; }
+    .view[hidden] { display: none; }
     .btn {
       background: #2b3240;
       color: var(--text);
@@ -79,13 +87,118 @@
       padding: 5px 8px; border-bottom: 1px solid #2b3240; cursor: pointer;
     }
     #matches li:hover { background: #2b3240; }
+    #savedCrops { display: flex; flex-wrap: wrap; gap: 6px; max-height: 170px; min-height: 40px; overflow: auto; }
+    #savedCrops img {
+      width: 64px; height: 64px; object-fit: contain;
+      background: #14161c; border: 1px solid #343a47; border-radius: 4px;
+      cursor: pointer;
+    }
+    #savedCrops img:hover { border-color: var(--accent); }
+    #savedCrops img.active { border-color: var(--green); }
     .statusbar { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 8px; }
     input[type="range"] { flex: 1; }
+    .tpl-layout { display: flex; gap: 14px; padding: 14px; align-items: flex-start; flex-wrap: wrap; }
+    .tpl-left { flex: 0 0 320px; display: flex; flex-direction: column; gap: 12px; }
+    .tpl-left .card { width: 100%; }
+    .tpl-saved { flex: 1 1 260px; max-width: 320px; }
+    .tpl-saved-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 60vh; overflow: auto; }
+    .tpl-saved-grid img {
+      width: 64px; height: 64px; object-fit: contain;
+      background: #14161c; border: 1px solid var(--border); border-radius: 4px;
+      cursor: grab;
+    }
+    .tpl-saved-grid img:hover { border-color: var(--accent); }
+    .tpl-saved-grid img.dragging { opacity: 0.5; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal[hidden] { display: none; }
+    .modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; max-width: 92vw; }
+    .modal-box img {
+      max-width: 84vw; max-height: 72vh; object-fit: contain; display: block; margin: 0 auto;
+      image-rendering: pixelated; border-radius: 6px; background-color: #1a1d24;
+      background-image:
+        linear-gradient(45deg, #2b3240 25%, transparent 25%),
+        linear-gradient(-45deg, #2b3240 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #2b3240 75%),
+        linear-gradient(-45deg, transparent 75%, #2b3240 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+    .modal-actions .btn { flex: 1; }
+    .edit-layout { display: flex; gap: 14px; padding: 14px; align-items: flex-start; flex-wrap: wrap; }
+    .edit-controls { flex: 1 1 260px; max-width: 320px; }
+    .edit-controls .row { margin-bottom: 10px; }
+    .edit-canvas-card { flex: 1 1 520px; min-width: 320px; }
+    .edit-stage { max-height: 62vh; overflow: auto; background: #14161c; border-radius: 6px; }
+    #editCanvas { display: block; cursor: crosshair; image-rendering: pixelated; }
+    #editCanvas.big-checker {
+      background-image:
+        linear-gradient(45deg, #2b3240 25%, transparent 25%),
+        linear-gradient(-45deg, #2b3240 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #2b3240 75%),
+        linear-gradient(-45deg, transparent 75%, #2b3240 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-color: #1a1d24;
+    }
+    .edit-store { flex: 1 1 100%; }
+    #editedStore { display: flex; flex-wrap: wrap; gap: 6px; max-height: 200px; min-height: 40px; overflow: auto; }
+    #editedStore img {
+      width: 64px; height: 64px; object-fit: contain;
+      background: #14161c; border: 1px solid var(--border); border-radius: 4px;
+      cursor: grab; position: relative;
+    }
+    #editedStore img:hover { border-color: var(--accent); }
+    #editedStore img.dragging { opacity: 0.5; }
+    .edit-tool-btn { flex: 1; text-align: center; padding: 8px 6px; }
+    input[type="color"] {
+      width: 40px; height: 34px; padding: 2px; background: #2b3240;
+      border: 1px solid #343a47; border-radius: 6px; cursor: pointer;
+    }
+    .tpl-tree-card { flex: 1 1 560px; }
+    #templatesBox { max-height: calc(100vh - 210px); overflow: auto; font-size: 13px; }
+    .tpl-folder { margin: 2px 0; }
+    .tpl-folder-header {
+      display: flex; align-items: center; gap: 6px; padding: 5px 8px;
+      border-radius: 5px; cursor: pointer; user-select: none;
+    }
+    .tpl-folder-header:hover { background: #2b3240; }
+    .tpl-folder-header .chev { color: var(--muted); font-size: 10px; }
+    .tpl-folder-header .fname { font-weight: 600; color: var(--text); }
+    .tpl-folder-header .count { color: var(--muted); margin-left: auto; }
+    .tpl-folder-header .addsub {
+      color: var(--accent); font-size: 15px; line-height: 1; cursor: pointer;
+      padding: 0 5px; font-weight: 600; border-radius: 4px;
+    }
+    .tpl-folder-header .addsub:hover { background: #343a47; }
+    .tpl-folder-header.drop { outline: 2px dashed var(--green); outline-offset: -2px; background: rgba(52,209,123,0.08); }
+    .tpl-children { padding-left: 16px; }
+    .tpl-files { display: flex; flex-wrap: wrap; gap: 7px; padding: 6px 4px; }
+    .tpl-file {
+      position: relative; width: 68px; height: 68px;
+      background: #14161c; border: 1px solid var(--border); border-radius: 4px;
+      overflow: hidden; cursor: pointer;
+    }
+    .tpl-file:hover { border-color: var(--accent); }
+    .tpl-file.drop { border: 2px dashed var(--green); }
+    .tpl-file img { width: 100%; height: 100%; object-fit: contain; }
+    .tpl-file .del {
+      position: absolute; top: 1px; right: 1px; width: 16px; height: 16px;
+      background: rgba(26,29,36,0.85); color: #ff7a7a; border: 1px solid var(--border);
+      border-radius: 3px; font-size: 11px; line-height: 1; cursor: pointer; display: none;
+    }
+    .tpl-file:hover .del { display: block; }
+    .tpl-new { margin-top: 8px; display: flex; gap: 6px; align-items: center; }
   </style>
 </head>
 <body>
   <header>
     <h1>CoC Match Tool</h1>
+    <div class="tabs">
+      <button class="tab-btn active" id="tabMatchBtn">Match</button>
+      <button class="tab-btn" id="tabEditBtn">Edit</button>
+      <button class="tab-btn" id="tabTemplatesBtn">Templates</button>
+    </div>
     <select id="deviceSelect"></select>
     <button class="btn" id="pullBtn">Pull screenshot</button>
     <button class="btn" id="uploadBtn">Load local PNG</button>
@@ -104,9 +217,10 @@
     </div>
   </header>
 
+  <div id="matchView" class="view">
   <main>
     <div id="canvasWrap">
-      <div class="hint">Drag on the image to draw a crop &#8212; matches update live.</div>
+      <div class="hint">Scroll to zoom at center &#183; drag to draw a crop &#183; middle-drag to pan.</div>
       <div id="stage">
         <canvas id="canvas"></canvas>
       </div>
@@ -127,8 +241,103 @@
         <h2>Matches (<span id="matchCountHead">0</span>)</h2>
         <ul id="matches"></ul>
       </div>
+      <div class="card">
+        <h2>Saved crops
+          <button class="btn" id="saveCropBtn" style="float:right; padding:2px 8px; font-size:11px;">Save crop</button>
+          <button class="btn" id="clearCropsBtn" style="float:right; padding:2px 8px; font-size:11px; color:#ff7a7a; margin-right:6px;">Clear all</button>
+        </h2>
+        <div id="savedCrops"></div>
+      </div>
     </div>
   </main>
+  </div>
+
+  <div id="editView" class="view" hidden>
+    <div class="edit-layout">
+      <div class="card edit-controls">
+        <h2>Edit tools</h2>
+        <div class="row"><button class="btn edit-tool-btn" id="editLoadCropBtn">Load Match crop</button></div>
+        <div class="row">
+          <button class="btn" id="editZoomOutBtn" title="Zoom out">&#8722;</button>
+          <input type="range" id="editZoom" min="1" max="40" step="1" value="1" style="flex:1;">
+          <button class="btn" id="editZoomInBtn" title="Zoom in">+</button>
+          <span id="editZoomVal" style="min-width:34px; text-align:center;">1x</span>
+        </div>
+        <div class="row">
+          <label>Erase</label>
+          <input type="range" id="editBrush" min="1" max="80" value="1" style="flex:1;">
+          <span id="editBrushVal">1</span>
+        </div>
+        <div class="row">
+          <button class="btn edit-tool-btn" id="editUndoBtn">Undo</button>
+          <button class="btn edit-tool-btn" id="editClearBtn">Erase all</button>
+        </div>
+        <div class="row">
+          <button class="btn edit-tool-btn" id="editResetBtn">Reset</button>
+          <button class="btn edit-tool-btn" id="editTestBtn">Test match</button>
+        </div>
+        <div class="row"><button class="btn edit-tool-btn" id="editSaveBtn">Save edited</button></div>
+        <div class="muted" style="margin-bottom:8px;">
+          Workflow: crop in Match &#8594; edit here &#8594; Test match (shows results on the screenshot) &#8594; Save edited &#8594; drag onto a template folder.
+        </div>
+        <div id="editTestResult" class="muted" style="white-space:pre-wrap;"></div>
+      </div>
+      <div class="card edit-canvas-card">
+        <h2>Editor</h2>
+        <div class="edit-stage"><canvas id="editCanvas"></canvas></div>
+        <div class="statusbar"><span id="editInfo">No image loaded</span></div>
+      </div>
+      <div class="card edit-store">
+        <h2>Saved crops (from Match) <span class="muted" style="font-weight:400;">click to load for editing</span></h2>
+        <div id="editCrops" class="tpl-saved-grid"></div>
+      </div>
+      <div class="card edit-store">
+        <h2>Stored edited images
+          <button class="btn" id="editStoreRemoveBtn" style="float:right; padding:2px 8px; font-size:11px; color:#ff7a7a; margin-right:6px;">Remove all</button>
+          <button class="btn" id="editStoreRefreshBtn" style="float:right; padding:2px 8px; font-size:11px;">Refresh</button>
+        </h2>
+        <div id="editedStore"></div>
+        <div class="muted" style="margin-top:8px;">Drag an edited image onto a template folder to add it there. Click one to re-edit it.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="templatesView" class="view" hidden>
+    <div class="tpl-layout">
+      <div class="tpl-left">
+        <div class="card tpl-saved">
+          <h2>Edited images <span class="muted" style="font-weight:400;">&#8230;from Edit tab</span></h2>
+          <div id="tplEditedStore" class="tpl-saved-grid"></div>
+        </div>
+        <div class="card tpl-saved">
+          <h2>Saved crops (original)
+            <button class="btn" id="tplSavedClearBtn" style="float:right; padding:2px 8px; font-size:11px; color:#ff7a7a;">Clear all</button>
+          </h2>
+          <div id="tplSavedCrops" class="tpl-saved-grid"></div>
+          <div class="muted" style="margin-top:8px;">Drag an edited image or a saved crop onto a template folder to add it there.</div>
+        </div>
+      </div>
+      <div class="card tpl-tree-card">
+        <h2>Template folders <button class="btn" id="tplRefreshBtn" style="float:right; padding:2px 8px; font-size:11px;">Refresh</button></h2>
+        <div class="row" style="margin-bottom:8px;">
+          <input type="text" id="tplNewFolderInput" placeholder="new folder name" style="flex:1; min-width:0; background:#2b3240; color:var(--text); border:1px solid #343a47; border-radius:6px; padding:7px 10px; font-size:13px; font-family:inherit;">
+          <button class="btn" id="tplNewFolderBtn">Add folder</button>
+        </div>
+        <div id="templatesBox"><div class="muted">Loading templates...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="editPreview" class="modal" hidden>
+    <div class="modal-box">
+      <img id="editPreviewImg" alt="edited image preview">
+      <div class="modal-actions">
+        <button class="btn" id="editPreviewEditBtn">Load into editor</button>
+        <button class="btn" id="editPreviewDelBtn" style="color:#ff7a7a;">Delete</button>
+        <button class="btn" id="editPreviewCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const canvas = document.getElementById('canvas');
@@ -143,8 +352,10 @@
     let zoom = 1;
     let crop = null;
     let matches = [];
+    let savedCrops = [];
     let dragging = false;
     let panning = false;
+    let panStart = null;
     let matchTimeout = null;
     let pinchDist = 0;
 
@@ -195,6 +406,81 @@
       clearTimeout(matchTimeout);
       matchTimeout = setTimeout(fetchMatches, 180);
     }
+
+    function renderSavedCrops() {
+      const box = document.getElementById('savedCrops');
+      box.innerHTML = '';
+      if (!savedCrops.length) {
+        box.innerHTML = '<div class="muted">No saved crops yet</div>';
+        return;
+      }
+      savedCrops.forEach(c => {
+        const img = document.createElement('img');
+        img.src = c.url;
+        img.title = c.id;
+        img.onclick = () => {
+          Array.from(box.children).forEach(el => el.classList.remove('active'));
+          img.classList.add('active');
+          showCrop(c.id);
+        };
+        box.appendChild(img);
+      });
+    }
+
+    function refreshSavedCrops() {
+      fetch('/api/crops')
+        .then(r => r.json())
+        .then(d => {
+          savedCrops = d.crops || [];
+          renderSavedCrops();
+        })
+        .catch(() => {});
+    }
+
+    function saveCrop() {
+      const rect = currentRect();
+      if (!rect || rect.w < 2 || rect.h < 2 || !imgObj) return;
+      fetch('/api/save_crop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crop: rect, threshold: parseFloat(thresholdInput.value) }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshSavedCrops();
+        })
+        .catch(() => {});
+    }
+
+    function showCrop(id) {
+      fetch('/api/crop_matches/' + encodeURIComponent(id))
+        .then(r => r.json())
+        .then(d => {
+          if (d.error || !d.crop) return;
+          matches = d.matches || [];
+          const r = d.crop;
+          crop = { x1: r.x, y1: r.y, x2: r.x + r.w, y2: r.y + r.h };
+          document.getElementById('cropInfo').textContent = `${r.x},${r.y} ${r.w}x${r.h}`;
+          updateMatchList();
+          draw();
+        })
+        .catch(() => {});
+    }
+
+    document.getElementById('saveCropBtn').onclick = saveCrop;
+
+    document.getElementById('clearCropsBtn').onclick = () => {
+      if (!savedCrops.length) return;
+      if (!confirm('Delete all saved crops?')) return;
+      fetch('/api/clear_crops', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshSavedCrops();
+        })
+        .catch(() => {});
+    };
 
     function updateMatchList() {
       const list = document.getElementById('matches');
@@ -251,12 +537,31 @@
     }
 
     canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        panning = true;
+        panStart = {
+          x: e.clientX,
+          y: e.clientY,
+          left: stageEl.scrollLeft,
+          top: stageEl.scrollTop,
+        };
+        return;
+      }
+      if (e.button !== 0) return;
       dragging = true;
       const p = pointerPos(e);
       crop = { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
       draw();
     });
     canvas.addEventListener('mousemove', (e) => {
+      canvas._lastPX = e.clientX;
+      canvas._lastPY = e.clientY;
+      if (panning && panStart) {
+        stageEl.scrollLeft = panStart.left - (e.clientX - panStart.x);
+        stageEl.scrollTop = panStart.top - (e.clientY - panStart.y);
+        return;
+      }
       if (!dragging) return;
       const p = pointerPos(e);
       crop.x2 = p.x;
@@ -264,7 +569,16 @@
       draw();
       deferredFetch();
     });
-    window.addEventListener('mouseup', () => { dragging = false; });
+    window.addEventListener('mouseup', () => {
+      const wasDragging = dragging;
+      dragging = false;
+      panning = false;
+      panStart = null;
+      if (wasDragging && crop) {
+        const rect = currentRect();
+        if (rect && rect.w >= 2 && rect.h >= 2) saveCrop();
+      }
+    });
 
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
@@ -335,10 +649,8 @@
       if (sAfter === sBefore) return;
       const rect = canvas.getBoundingClientRect();
       const stage = document.getElementById('stage');
-      const cx = canvas._lastPX !== undefined ? canvas._lastPX : rect.left + rect.width / 2;
-      const cy = canvas._lastPY !== undefined ? canvas._lastPY : rect.top + rect.height / 2;
-      const mx = cx - rect.left;
-      const my = cy - rect.top;
+      const mx = rect.width / 2;
+      const my = rect.height / 2;
       const px = mx + stage.scrollLeft;
       const py = my + stage.scrollTop;
       stage.scrollLeft = px * (sAfter / sBefore) - mx;
@@ -352,7 +664,6 @@
     const stageEl = document.getElementById('stage');
     stageEl.addEventListener('wheel', (e) => {
       if (!imgObj) return;
-      if (!e.ctrlKey && !e.metaKey) return; // plain wheel scrolls to pan
       e.preventDefault();
       canvas._lastPX = e.clientX;
       canvas._lastPY = e.clientY;
@@ -381,6 +692,7 @@
       });
     }
     refreshDevices();
+    refreshSavedCrops();
 
     loadImage('/api/image?' + Date.now());
 
@@ -411,6 +723,635 @@
           loadImage('/api/image?' + Date.now());
         });
     };
+
+    // ---- Template manager ----
+    let tplTree = [];
+
+    function tplImageURL(rel) {
+      return '/api/template_image?rel=' + encodeURIComponent(rel);
+    }
+
+    function uploadToFolder(folder, files) {
+      if (!files.length) return;
+      const fd = new FormData();
+      fd.append('folder', folder);
+      for (const f of files) fd.append('files', f, f.name);
+      fetch('/api/template_upload', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshTemplates();
+        })
+        .catch(err => alert(err));
+    }
+
+    function addCropToFolder(cropId, folder) {
+      fetch('/api/template_add_crop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ crop_id: cropId, folder }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshTemplates();
+        })
+        .catch(err => alert(err));
+    }
+
+    function addEditToFolder(editId, folder) {
+      fetch('/api/template_add_edited', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edited_id: editId, folder }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshTemplates();
+        })
+        .catch(err => alert(err));
+    }
+
+    function bindTemplateDrop(el, folder) {
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.add('drop');
+      });
+      el.addEventListener('dragleave', () => el.classList.remove('drop'));
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        el.classList.remove('drop');
+        const cropId = e.dataTransfer.getData('application/x-crop-id');
+        if (cropId) { addCropToFolder(cropId, folder); return; }
+        const editId = e.dataTransfer.getData('application/x-edited');
+        if (editId) { addEditToFolder(editId, folder); return; }
+        uploadToFolder(folder, Array.from(e.dataTransfer.files || []));
+      });
+    }
+
+    function renderTemplates() {
+      const box = document.getElementById('templatesBox');
+      box.innerHTML = '';
+      if (!tplTree.length) {
+        box.innerHTML = '<div class="muted">No template folders yet</div>';
+        return;
+      }
+      (function render(folders, parent) {
+        folders.forEach(folder => {
+          const wrap = document.createElement('div');
+          wrap.className = 'tpl-folder';
+
+          const files = folder.children.filter(c => c.type === 'file');
+          const subdirs = folder.children.filter(c => c.type === 'dir');
+
+          const header = document.createElement('div');
+          header.className = 'tpl-folder-header';
+          const chev = document.createElement('span');
+          chev.className = 'chev';
+          chev.textContent = '▸';
+          const fname = document.createElement('span');
+          fname.className = 'fname';
+          fname.textContent = folder.name;
+          const addSub = document.createElement('span');
+          addSub.className = 'addsub';
+          addSub.textContent = '+';
+          addSub.title = 'Add subfolder in ' + folder.rel;
+          addSub.onclick = (ev) => {
+            ev.stopPropagation();
+            const name = prompt('New subfolder under "' + folder.rel + '":');
+            if (!name || !name.trim()) return;
+            fetch('/api/template_new_folder', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folder: folder.rel + '/' + name.trim() }),
+            }).then(r => r.json()).then(d => {
+              if (d.error) { alert(d.error); return; }
+              refreshTemplates();
+              setTimeout(() => { if (childrenBox) childrenBox.style.display = 'block'; }, 0);
+            });
+          };
+          const count = document.createElement('span');
+          count.className = 'count';
+          count.textContent = files.length;
+          bindTemplateDrop(header, folder.rel);
+          header.appendChild(chev);
+          header.appendChild(fname);
+          header.appendChild(addSub);
+          header.appendChild(count);
+
+          const childrenBox = document.createElement('div');
+          childrenBox.className = 'tpl-children';
+          childrenBox.style.display = 'none';
+
+          header.onclick = () => {
+            const hidden = childrenBox.style.display === 'none';
+            childrenBox.style.display = hidden ? 'block' : 'none';
+            chev.textContent = hidden ? '▾' : '▸';
+          };
+
+          if (files.length) {
+            const grid = document.createElement('div');
+            grid.className = 'tpl-files';
+            files.forEach(f => {
+              const tile = document.createElement('div');
+              tile.className = 'tpl-file';
+              tile.title = f.rel;
+              bindTemplateDrop(tile, folder.rel);
+              const img = document.createElement('img');
+              img.src = tplImageURL(f.rel);
+              img.loading = 'lazy';
+              const del = document.createElement('span');
+              del.className = 'del';
+              del.textContent = 'x';
+              del.title = 'Delete ' + f.name;
+              del.onclick = (ev) => {
+                ev.stopPropagation();
+                if (!confirm('Delete ' + f.rel + '?')) return;
+                fetch('/api/template_delete', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ rel: f.rel }),
+                }).then(r => r.json()).then(d => {
+                  if (d.error) { alert(d.error); return; }
+                  refreshTemplates();
+                });
+              };
+              img.onclick = () => loadImage(tplImageURL(f.rel) + '&' + Date.now());
+              tile.appendChild(img);
+              tile.appendChild(del);
+              grid.appendChild(tile);
+            });
+            childrenBox.appendChild(grid);
+          }
+
+          wrap.appendChild(header);
+          wrap.appendChild(childrenBox);
+          parent.appendChild(wrap);
+
+          if (subdirs.length) render(subdirs, childrenBox);
+        });
+      })(tplTree, box);
+    }
+
+    function renderTplSavedCrops() {
+      const box = document.getElementById('tplSavedCrops');
+      box.innerHTML = '';
+      if (!savedCrops.length) {
+        box.innerHTML = '<div class="muted">No saved crops yet</div>';
+        return;
+      }
+      savedCrops.forEach(c => {
+        const img = document.createElement('img');
+        img.src = c.url;
+        img.title = 'Drag onto a template folder: ' + c.id;
+        img.draggable = true;
+        img.onclick = () => { if (imgObj) draw(); };
+        img.ondragstart = (e) => {
+          e.dataTransfer.setData('application/x-crop-id', c.id);
+          e.dataTransfer.effectAllowed = 'copy';
+          img.classList.add('dragging');
+        };
+        img.ondragend = () => img.classList.remove('dragging');
+        box.appendChild(img);
+      });
+    }
+
+    function refreshTemplates() {
+      fetch('/api/template_tree')
+        .then(r => r.json())
+        .then(d => {
+          tplTree = d.tree || [];
+          renderTemplates();
+        })
+        .catch(() => {
+          document.getElementById('templatesBox').innerHTML = '<div class="muted">Failed to load templates</div>';
+        });
+      refreshSavedCropsForTemplates();
+    }
+
+    function refreshSavedCropsForTemplates() {
+      fetch('/api/crops')
+        .then(r => r.json())
+        .then(d => {
+          savedCrops = d.crops || [];
+          renderTplSavedCrops();
+        })
+        .catch(() => {});
+      fetch('/api/edited')
+        .then(r => r.json())
+        .then(d => {
+          editList = d.edited || [];
+          renderTplEditedStore();
+        })
+        .catch(() => {});
+    }
+
+    function renderTplEditedStore() {
+      const box = document.getElementById('tplEditedStore');
+      box.innerHTML = '';
+      if (!editList.length) {
+        box.innerHTML = '<div class="muted">No edited images yet \u2014 use the Edit tab</div>';
+        return;
+      }
+      editList.forEach(c => {
+        const img = document.createElement('img');
+        img.src = c.url;
+        img.title = 'Drag onto a template folder: ' + c.id;
+        img.draggable = true;
+        img.ondragstart = (e) => {
+          e.dataTransfer.setData('application/x-edited', c.id);
+          e.dataTransfer.effectAllowed = 'copy';
+          img.classList.add('dragging');
+        };
+        img.ondragend = () => img.classList.remove('dragging');
+        box.appendChild(img);
+      });
+    }
+
+    document.getElementById('tplRefreshBtn').onclick = refreshTemplates;
+
+    function createFolder() {
+      const val = document.getElementById('tplNewFolderInput').value.trim();
+      if (!val) { alert('Enter a folder name'); return; }
+      fetch('/api/template_new_folder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder: val }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          document.getElementById('tplNewFolderInput').value = '';
+          refreshTemplates();
+        })
+        .catch(err => alert(err));
+    }
+
+    document.getElementById('tplNewFolderBtn').onclick = createFolder;
+    document.getElementById('tplNewFolderInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') createFolder();
+    });
+
+    document.getElementById('tplSavedClearBtn').onclick = () => {
+      if (!savedCrops.length) return;
+      if (!confirm('Delete all saved crops?')) return;
+      fetch('/api/clear_crops', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshSavedCrops();
+          savedCrops = [];
+          renderTplSavedCrops();
+        })
+        .catch(() => {});
+    };
+
+    ['dragover', 'drop'].forEach(evt => {
+      document.body.addEventListener(evt, (e) => e.preventDefault(), false);
+    });
+
+    // ---- Image editor ----
+    const editCanvas = document.getElementById('editCanvas');
+    const editCtx = editCanvas.getContext('2d', { willReadFrequently: true });
+    let editOriginal = null;
+    let editUndoStack = [];
+    let editDrawing = false;
+    let editedList = [];
+    let editScale = 1;
+
+    function applyEditZoom() {
+      editScale = parseInt(document.getElementById('editZoom').value, 10) || 1;
+      editScale = Math.min(40, Math.max(1, editScale));
+      editCanvas.style.width = (editCanvas.width * editScale) + 'px';
+      editCanvas.style.height = (editCanvas.height * editScale) + 'px';
+      document.getElementById('editZoomVal').textContent = editScale + 'x';
+    }
+
+    function autoZoom() {
+      const m = Math.max(editCanvas.width, editCanvas.height);
+      const z = Math.min(40, Math.max(1, Math.round(520 / Math.max(1, m))));
+      document.getElementById('editZoom').value = z;
+      applyEditZoom();
+    }
+
+    function editLoad(img) {
+      editCanvas.width = img.naturalWidth;
+      editCanvas.height = img.naturalHeight;
+      editCtx.drawImage(img, 0, 0);
+      const snap = editCtx.getImageData(0, 0, editCanvas.width, editCanvas.height);
+      editOriginal = snap;
+      editUndoStack = [];
+      pushUndo();
+      document.getElementById('editInfo').textContent = `${img.naturalWidth}x${img.naturalHeight}`;
+      document.getElementById('editTestResult').textContent = '';
+      autoZoom();
+    }
+
+    function pushUndo() {
+      if (!editCanvas.width) return;
+      const snap = editCtx.getImageData(0, 0, editCanvas.width, editCanvas.height);
+      editUndoStack.push(snap);
+      if (editUndoStack.length > 40) editUndoStack.shift();
+    }
+
+    function erasePixelAt(ix, iy) {
+      const size = parseInt(document.getElementById('editBrush').value, 10) || 1;
+      const r = Math.floor((size - 1) / 2);
+      editCtx.clearRect(ix - r, iy - r, size, size);
+    }
+
+    function eraseLine(x0, y0, x1, y1) {
+      const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 0; i <= steps; i++) {
+        const px = Math.round(x0 + ((x1 - x0) * i) / steps);
+        const py = Math.round(y0 + ((y1 - y0) * i) / steps);
+        erasePixelAt(px, py);
+      }
+    }
+
+    function eraseAtPointer(e) {
+      const p = editPointerPos(e);
+      const ix = Math.round(p.x);
+      const iy = Math.round(p.y);
+      if (editLast && editDrawing) {
+        eraseLine(editLast.x, editLast.y, ix, iy);
+      } else {
+        erasePixelAt(ix, iy);
+      }
+      editLast = { x: ix, y: iy };
+    }
+
+    const editStage = document.querySelector('.edit-stage');
+    const editPointerPos = (e) => {
+      const rect = editCanvas.getBoundingClientRect();
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      return { x: (cx - rect.left) / editScale, y: (cy - rect.top) / editScale };
+    };
+    let editLast = null;
+
+    editCanvas.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (!editCanvas.width) return;
+      editDrawing = true;
+      pushUndo();
+      editLast = null;
+      eraseAtPointer(e);
+    });
+    editCanvas.addEventListener('mousemove', (e) => {
+      if (!editDrawing) return;
+      eraseAtPointer(e);
+    });
+    window.addEventListener('mouseup', () => { editDrawing = false; editLast = null; });
+    editCanvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (!editCanvas.width) return;
+      editDrawing = true;
+      pushUndo();
+      editLast = null;
+      eraseAtPointer(e);
+    }, { passive: false });
+    editCanvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (!editDrawing) return;
+      eraseAtPointer(e);
+    }, { passive: false });
+    editCanvas.addEventListener('touchend', () => { editDrawing = false; editLast = null; });
+
+    document.getElementById('editBrush').addEventListener('input', () => {
+      document.getElementById('editBrushVal').textContent = document.getElementById('editBrush').value;
+    });
+
+    document.getElementById('editUndoBtn').onclick = () => {
+      if (editUndoStack.length > 1) {
+        editUndoStack.pop();
+        editCtx.putImageData(editUndoStack[editUndoStack.length - 1], 0, 0);
+      }
+    };
+
+    document.getElementById('editClearBtn').onclick = () => {
+      if (!editCanvas.width) return;
+      pushUndo();
+      editCtx.save();
+      editCtx.globalCompositeOperation = 'destination-out';
+      editCtx.clearRect(0, 0, editCanvas.width, editCanvas.height);
+      editCtx.restore();
+    };
+
+    document.getElementById('editResetBtn').onclick = () => {
+      if (!editCanvas.width || !editOriginal) return;
+      editCtx.putImageData(editOriginal, 0, 0);
+    };
+
+    function editLoadImage(url) {
+      const im = new Image();
+      im.onload = () => editLoad(im);
+      im.src = url;
+    }
+
+    document.getElementById('editLoadCropBtn').onclick = () => {
+      const rect = currentRect();
+      if (!rect || rect.w < 2 || rect.h < 2) { alert('Draw a crop in the Match tab first'); return; }
+      fetch(`/api/crop_image?x=${rect.x}&y=${rect.y}&w=${rect.w}&h=${rect.h}`)
+        .then(r => { if (!r.ok) throw new Error('Failed to load crop'); return r.blob(); })
+        .then(b => editLoadImage(URL.createObjectURL(b)))
+        .catch(err => alert(err.message));
+    };
+
+document.getElementById('editTestBtn').onclick = () => {
+      if (!editCanvas.width) { alert('Load an image first'); return; }
+      const out = document.getElementById('editTestResult');
+      out.textContent = 'Testing match...';
+      editCanvas.toBlob(blob => {
+        if (!blob) { out.textContent = 'Failed to read canvas'; return; }
+        const fd = new FormData();
+        fd.append('file', blob, 'edited.png');
+        fd.append('threshold', thresholdInput.value);
+        fetch('/api/match_edited', { method: 'POST', body: fd })
+          .then(r => r.json())
+          .then(d => {
+            if (d.error) { out.textContent = d.error; return; }
+            matches = d.matches || [];
+            document.getElementById('editTestResult').textContent = d.count + ' match' + (d.count === 1 ? '' : 'es') + ' found';
+            updateMatchList();
+            switchTab('match');
+          })
+          .catch(err => { out.textContent = 'Request failed: ' + err.message; });
+      }, 'image/png');
+    };
+
+    document.getElementById('editSaveBtn').onclick = () => {
+      if (!editCanvas.width) { alert('Load an image first'); return; }
+      editCanvas.toBlob(blob => {
+        if (!blob) { alert('Failed to read canvas'); return; }
+        const fd = new FormData();
+        fd.append('file', blob, 'edit.png');
+        fetch('/api/edited/save', { method: 'POST', body: fd })
+          .then(r => r.json())
+          .then(d => {
+            if (d.error) { alert(d.error); return; }
+            alert('Saved: ' + d.id);
+            refreshEditedStore();
+          })
+          .catch(err => alert(err.message));
+      }, 'image/png');
+    };
+
+    function openEditPreview(item) {
+      const modal = document.getElementById('editPreview');
+      document.getElementById('editPreviewImg').src = item.url + '?' + Date.now();
+      modal._item = item;
+      modal.hidden = false;
+    }
+
+    function closeEditPreview() {
+      document.getElementById('editPreview').hidden = true;
+    }
+
+    document.getElementById('editPreviewCloseBtn').onclick = closeEditPreview;
+    document.getElementById('editPreview').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeEditPreview();
+    });
+    document.getElementById('editPreviewEditBtn').onclick = () => {
+      const item = document.getElementById('editPreview')._item;
+      if (!item) return;
+      closeEditPreview();
+      editLoadImage(item.url + '?' + Date.now());
+    };
+    document.getElementById('editPreviewDelBtn').onclick = () => {
+      const item = document.getElementById('editPreview')._item;
+      if (!item) return;
+      if (!confirm('Delete edited image ' + item.id + '?')) return;
+      fetch('/api/edited/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ edit_id: item.id }),
+      }).then(r => r.json()).then(d => {
+        if (d.error) { alert(d.error); return; }
+        closeEditPreview();
+        refreshEditedStore();
+        refreshTemplates();
+      });
+    };
+
+    function renderEditedStore() {
+      const box = document.getElementById('editedStore');
+      box.innerHTML = '';
+      if (!editList.length) {
+        box.innerHTML = '<div class="muted">No edited images yet</div>';
+        return;
+      }
+      editList.forEach(c => {
+        const tile = document.createElement('div');
+        tile.style.position = 'relative';
+        const img = document.createElement('img');
+        img.src = c.url;
+        img.title = 'Click to view \u2014 drag onto a template folder: ' + c.id;
+        img.draggable = true;
+        img.onclick = () => openEditPreview(c);
+        img.ondragstart = (e) => {
+          e.dataTransfer.setData('application/x-edited', c.id);
+          e.dataTransfer.effectAllowed = 'copy';
+          img.classList.add('dragging');
+        };
+        img.ondragend = () => img.classList.remove('dragging');
+        const del = document.createElement('span');
+        del.textContent = 'x';
+        del.title = 'Delete';
+        del.style.cssText = 'position:absolute;top:1px;right:1px;background:rgba(26,29,36,0.85);color:#ff7a7a;border:1px solid #343a47;border-radius:3px;font-size:11px;line-height:1;cursor:pointer;';
+        del.onclick = (ev) => {
+          ev.stopPropagation();
+          if (!confirm('Delete edited image ' + c.id + '?')) return;
+          fetch('/api/edited/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ edit_id: c.id }),
+          }).then(r => r.json()).then(d => {
+            if (d.error) { alert(d.error); return; }
+            refreshEditedStore();
+          });
+        };
+        tile.appendChild(img);
+        tile.appendChild(del);
+        box.appendChild(tile);
+      });
+    }
+
+    function refreshEditedStore() {
+      fetch('/api/edited')
+        .then(r => r.json())
+        .then(d => {
+          editList = d.edited || [];
+          renderEditedStore();
+        })
+        .catch(() => {});
+    }
+
+    function renderEditCrops() {
+      const box = document.getElementById('editCrops');
+      box.innerHTML = '';
+      if (!savedCrops.length) {
+        box.innerHTML = '<div class="muted">No saved crops yet &mdash; draw a crop in the Match tab</div>';
+        return;
+      }
+      savedCrops.forEach(c => {
+        const img = document.createElement('img');
+        img.src = c.url;
+        img.title = 'Load for editing: ' + c.id;
+        img.style.cursor = 'pointer';
+        img.onclick = () => editLoadImage(c.url + '?' + Date.now());
+        box.appendChild(img);
+      });
+    }
+
+    function refreshEditSources() {
+      fetch('/api/crops')
+        .then(r => r.json())
+        .then(d => {
+          savedCrops = d.crops || [];
+          renderEditCrops();
+        })
+        .catch(() => {});
+    }
+
+    document.getElementById('editStoreRefreshBtn').onclick = refreshEditedStore;
+
+    document.getElementById('editStoreRemoveBtn').onclick = () => {
+      if (!editList.length) return;
+      if (!confirm('Remove all edited images?')) return;
+      fetch('/api/edited/clear', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.error) { alert(d.error); return; }
+          refreshEditedStore();
+          refreshTemplates();
+        })
+        .catch(() => {});
+    };
+
+    // ---- Tabs ----
+    function switchTab(name) {
+      document.getElementById('matchView').hidden = name !== 'match';
+      document.getElementById('editView').hidden = name !== 'edit';
+      document.getElementById('templatesView').hidden = name !== 'templates';
+      document.getElementById('tabMatchBtn').classList.toggle('active', name === 'match');
+      document.getElementById('tabEditBtn').classList.toggle('active', name === 'edit');
+      document.getElementById('tabTemplatesBtn').classList.toggle('active', name === 'templates');
+      if (name === 'templates') setTimeout(refreshTemplates, 0);
+      if (name === 'edit') { setTimeout(refreshEditedStore, 0); setTimeout(refreshEditSources, 0); }
+      if (name === 'match') setTimeout(() => { if (imgObj) draw(); }, 0);
+    }
+
+    document.getElementById('tabMatchBtn').onclick = () => switchTab('match');
+    document.getElementById('tabEditBtn').onclick = () => switchTab('edit');
+    document.getElementById('tabTemplatesBtn').onclick = () => switchTab('templates');
+
+    refreshTemplates();
+    refreshEditedStore();
+    refreshEditSources();
   </script>
 </body>
 </html>

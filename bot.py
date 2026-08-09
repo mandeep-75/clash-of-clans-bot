@@ -1,24 +1,19 @@
-import time
 import random
-import os
-import itertools
+import time
+
 import config
-from deployment_config import DeploymentConfig
 from utils.text_detect_resource import get_resource_values
 
 
 class CoCBot:
-    def __init__(self, device_controller, webhook_url=None, deployment_config=None):
+    def __init__(self, device_controller, webhook_url=None):
         self.device = device_controller
         self.webhook_url = webhook_url
-        
-        # Use provided config or create new one
-        self.deploy_config = deployment_config or DeploymentConfig()
-        
+
         self.loop_count = 0
         self.start_time = time.time()
         self.stop_flag = False
-        
+
         self.session_gold = 0
         self.session_elixir = 0
         self.session_dark = 0
@@ -30,12 +25,12 @@ class CoCBot:
     def stop(self):
         """Signal the bot to stop after current loop."""
         self.stop_flag = True
-    
+
     def run(self):
         """Main Bot Loop"""
         self._print_flow()
         self.stop_flag = False
-        
+
         with open(config.LOG_FILE, "a", encoding="utf-8") as f:
             f.write("\n\n===== NEW BOT SESSION STARTED =====\n")
             f.write(f"Start Time: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -49,18 +44,18 @@ class CoCBot:
             except Exception as e:
                 print(f"Error in loop: {e}")
                 time.sleep(5)
-        
+
         print("\n Bot stopped gracefully.")
 
     def _print_flow(self):
         """Print the flow of tasks at startup."""
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("BOT FLOW CONFIGURATION")
-        print("="*50)
+        print("=" * 50)
         for task, enabled in self.flow.items():
             status = "[ON]" if enabled else "[OFF]"
             print(f"  {status} {task}")
-        print("="*50 + "\n")
+        print("=" * 50 + "\n")
 
     def _run_flow(self):
         """Run each enabled task in order."""
@@ -81,6 +76,8 @@ class CoCBot:
             if not self._search_and_select_base():
                 return
 
+        self._zoom_on_battle_start()
+
         if self.flow.get("deploy_troops"):
             self._deploy_troops()
         if self.flow.get("deploy_heroes"):
@@ -97,28 +94,28 @@ class CoCBot:
         """Collect a single resource type."""
         print(f"Collecting {name}...")
         self.device.take_screenshot()
-        self.device.detect_and_tap(f"ui_main_base/{folder}")
+        self.device.detect_and_tap(f"templates/{folder}")
 
     def _navigate_to_attack(self) -> bool:
         """Navigate to attack screen and click Find Match."""
         print("Navigating to attack...")
-        
-        if not self._wait_for_button("ui_main_base/attack_button", timeout=30):
+
+        if not self._wait_for_button("templates/attack_button", timeout=30):
             print("Timeout waiting for Attack button")
             return False
-        
+
         time.sleep(1)
-        
-        if not self._wait_for_button("ui_main_base/find_match_button", timeout=30):
+
+        if not self._wait_for_button("templates/find_match_button", timeout=30):
             print("Timeout waiting for Find Match button")
             return False
-        
+
         time.sleep(2)
         self.device.take_screenshot()
-        
-        if self.device.detect_and_tap("ui_main_base/attack"):
+
+        if self.device.detect_and_tap("templates/attack"):
             time.sleep(2)
-        
+
         return True
 
     def _wait_for_button(self, folder: str, timeout: int = 30) -> bool:
@@ -128,7 +125,7 @@ class CoCBot:
             self.device.take_screenshot()
             if self.device.detect_and_tap(folder):
                 return True
-            self.device.detect_and_tap("ui_main_base/okay_button")
+            self.device.detect_and_tap("templates/okay_button")
             time.sleep(2)
         return False
 
@@ -137,9 +134,9 @@ class CoCBot:
         print("Searching for base...")
         search_start = time.time()
         attempt = 1
-        
+
         while not self.stop_flag:
-            if time.time() - search_start > self.deploy_config.get("base_search_timeout", config.BASE_SEARCH_TIMEOUT):
+            if time.time() - search_start > config.BASE_SEARCH_TIMEOUT:
                 print("Timeout searching for base")
                 return False
 
@@ -155,117 +152,134 @@ class CoCBot:
             elixir = resources.get("elixir", 0)
             dark = resources.get("dark_elixir", 0)
 
-            if self.last_resources == resources or (gold == 0 and elixir == 0 and dark == 0):
+            if self.last_resources == resources or (
+                gold == 0 and elixir == 0 and dark == 0
+            ):
                 print(f"Base {attempt}: (skipping invalid read)")
             else:
                 print(f"Base {attempt}: Gold={gold:,} Elixir={elixir:,} Dark={dark:,}")
 
             self.last_resources = resources.copy()
 
-            if (gold >= self.deploy_config.get("gold_threshold", config.GOLD_THRESHOLD) or 
-                elixir >= self.deploy_config.get("elixir_threshold", config.ELIXIR_THRESHOLD)) and \
-               dark >= self.deploy_config.get("dark_threshold", config.DARK_ELIXIR_THRESHOLD):
+            if (
+                gold >= config.GOLD_THRESHOLD or elixir >= config.ELIXIR_THRESHOLD
+            ) and dark >= config.DARK_ELIXIR_THRESHOLD:
                 print("Target found!")
                 self.session_gold += gold
                 self.session_elixir += elixir
                 self.session_dark += dark
-                
+
                 with open(config.LOG_FILE, "a", encoding="utf-8") as f:
-                    f.write(f"Attack {self.loop_count}: Gold={gold:,}, Elixir={elixir:,}, Dark={dark:,}\n")
-                
+                    f.write(
+                        f"Attack {self.loop_count}: Gold={gold:,}, Elixir={elixir:,}, Dark={dark:,}\n"
+                    )
+
                 return True
 
             print("Skipping...")
-            if self.device.detect_and_tap("ui_main_base/next_button"):
+            if self.device.detect_and_tap("templates/next_button"):
                 search_start = time.time()
-            
+
             time.sleep(random.uniform(4.5, 5))
             self.device.take_screenshot()
             attempt += 1
-        
+
         return False  # Stopped
+
+    def _zoom_on_battle_start(self):
+        """Pinch-zoom the battlefield before deploying (if enabled)."""
+        direction = config.BATTLE_ZOOM
+        if not direction:
+            return
+
+        print(f"Pinch zooming {direction} on battle start...")
+        try:
+            self.device.pinch_zoom(
+                direction=direction,
+                start_dist=config.ZOOM_START_DIST,
+                end_dist=config.ZOOM_END_DIST,
+                steps=config.ZOOM_STEPS,
+            )
+        except (RuntimeError, OSError) as e:
+            print(f"Pinch zoom failed: {e}")
+        time.sleep(1.5)
 
     def _deploy_troops(self):
         """Deploy troops to battlefield with per-troop counts."""
-        selected_troops = self.deploy_config.get("selected_troops", ["super_minion"])
-        troop_counts = self.deploy_config.get("troop_counts", {})
-        
-        # Get counts for each selected troop, default to 14 if not specified
-        deployment_plan = {}
-        for troop in selected_troops:
-            deployment_plan[troop] = troop_counts.get(troop, 14)
-        
+        deployment_plan = {k: v for k, v in config.SELECTED_TROOPS.items() if v > 0}
+
         # Check if any troops have count > 0
-        if not any(count > 0 for count in deployment_plan.values()):
+        if not deployment_plan:
             print("No troops to deploy!")
             return
-        
-        locs = self.deploy_config.get("troop_locations", config.TROOP_LOCATIONS)[:]
-        random_offset = self.deploy_config.get("random_offset_troops", config.RANDOM_OFFSET)
-        
+
+        locs = config.TROOP_LOCATIONS[:]
+        random_offset = config.RANDOM_OFFSET
+
         if not locs:
             print("No troop locations defined!")
             return
-        
+
         random.shuffle(locs)
         loc_index = 0
-        
+
         # Deploy each troop type with its count
         for troop_folder, count in deployment_plan.items():
             if count <= 0:
                 continue
-            
+
             # Select this troop type in the UI
-            if self.device.detect_and_tap(f"ui_main_base/troops/{troop_folder}"):
+            if self.device.detect_and_tap(f"templates/troops/{troop_folder}"):
                 print(f"Deploying {troop_folder} ({count})...")
                 time.sleep(0.3)  # Wait for troop selection UI
-                
+
                 # Deploy 'count' troops at locations
                 for i in range(count):
                     tgt = locs[loc_index % len(locs)]
                     self.device.tap(tgt[0], tgt[1], random_offset)
                     time.sleep(random.uniform(0.1, 0.2))
                     loc_index += 1
-                
+
                 time.sleep(0.3)  # Brief pause between troop types
             else:
                 print(f"Troop button not found: {troop_folder}")
-        
+
         time.sleep(random.uniform(4, 5))
 
     def _deploy_heroes(self):
         """Deploy heroes to battlefield."""
         print("Deploying heroes...")
         self.deployed_heroes = {}
-        
-        selected_heroes = self.deploy_config.get("selected_heroes", [])
-        hero_counts = self.deploy_config.get("hero_counts", {})
-        
+
+        selected_heroes = [k for k, v in config.SELECTED_HEROES.items() if v > 0]
+
         if not selected_heroes:
             print("No heroes selected!")
             return
-        
-        hero_locs = self.deploy_config.get("hero_locations", config.HERO_LOCATIONS)[:]
-        random_offset = self.deploy_config.get("random_offset_heroes", config.RANDOM_OFFSET_HEROES)
-        
+
+        hero_locs = config.HERO_LOCATIONS[:]
+        random_offset = config.RANDOM_OFFSET_HEROES
+
         if not hero_locs:
             print("No hero locations defined!")
             return
-        
+
         random.shuffle(hero_locs)
         loc_index = 0
-        
+
         for hero_folder in selected_heroes:
-            count = hero_counts.get(hero_folder, 1)
+            count = config.SELECTED_HEROES[hero_folder]
             if count <= 0:
                 continue
-            
-            if self.device.detect_and_tap(f"ui_main_base/hero/{hero_folder}"):
+
+            if self.device.detect_and_tap(f"templates/hero/{hero_folder}"):
                 print(f"Deploying {hero_folder}...")
                 for i in range(count):
                     loc = hero_locs[loc_index % len(hero_locs)]
                     self.device.tap(loc[0], loc[1], random_offset)
-                    coords = self.device.detect_button(f"ui_main_base/hero/{hero_folder}", threshold=0.8)
+                    coords = self.device.detect_button(
+                        f"templates/hero/{hero_folder}", threshold=0.8
+                    )
                     if coords:
                         self.deployed_heroes[hero_folder] = coords
                     time.sleep(random.uniform(0.5, 1.0))
@@ -275,28 +289,27 @@ class CoCBot:
 
     def _deploy_spells(self):
         """Deploy spells to battlefield."""
-        selected_spells = self.deploy_config.get("selected_spells", [])
-        spell_counts = self.deploy_config.get("spell_counts", {})
-        
+        selected_spells = [k for k, v in config.SELECTED_SPELLS.items() if v > 0]
+
         if not selected_spells:
             print("No spells selected!")
             return
-        
-        spell_locs = self.deploy_config.get("spell_locations", config.SPELL_LOCATIONS)
-        random_offset = self.deploy_config.get("random_offset_spells", config.RANDOM_OFFSET_SPELLS)
-        
+
+        spell_locs = config.SPELL_LOCATIONS
+        random_offset = config.RANDOM_OFFSET_SPELLS
+
         if not spell_locs:
             print("No spell locations defined!")
             return
-        
+
         print("Deploying spells...")
-        
+
         for spell_folder in selected_spells:
-            count = spell_counts.get(spell_folder, 1)
+            count = config.SELECTED_SPELLS[spell_folder]
             if count <= 0:
                 continue
-            
-            if self.device.detect_and_tap(f"ui_main_base/spells/{spell_folder}"):
+
+            if self.device.detect_and_tap(f"templates/spells/{spell_folder}"):
                 print(f"Deploying {spell_folder}...")
                 for i in range(count):
                     loc = spell_locs[i % len(spell_locs)]
@@ -314,46 +327,45 @@ class CoCBot:
         for name, coords in self.deployed_heroes.items():
             if hero_name_partial in name.lower():
                 print(f"Activating {name} ability!")
-                self.device.tap(coords[0], coords[1], 
-                    self.deploy_config.get("random_offset_heroes", config.RANDOM_OFFSET_HEROES))
+                self.device.tap(coords[0], coords[1], config.RANDOM_OFFSET_HEROES)
                 break
 
     def _return_home(self):
         """Return home after battle."""
         print("Returning home...")
         wait_start = time.time()
-        timeout = self.deploy_config.get("return_home_timeout", config.RETURN_HOME_TIMEOUT)
-        
+        timeout = config.RETURN_HOME_TIMEOUT
+
         while time.time() - wait_start < timeout:
             if self.stop_flag:
                 return
             self.device.take_screenshot()
-            
-            if self.device.detect_and_tap("ui_main_base/return_home"):
+
+            if self.device.detect_and_tap("templates/return_home"):
                 time.sleep(3)
-                self.device.detect_and_tap("ui_main_base/okay_button")
+                self.device.detect_and_tap("templates/okay_button")
                 return
-            
+
             time.sleep(3)
-        
+
         print("Force ending battle...")
         self.device.take_screenshot()
-        self.device.detect_and_tap("ui_main_base/end_battle")
-        self.device.detect_and_tap("ui_main_base/surrender_button")
+        self.device.detect_and_tap("templates/end_battle")
+        self.device.detect_and_tap("templates/surrender_button")
         time.sleep(1)
         self.device.take_screenshot()
-        self.device.detect_and_tap("ui_main_base/return_home")
+        self.device.detect_and_tap("templates/return_home")
 
     def _log_summary(self):
         """Log session summary every 5 loops."""
         if self.loop_count % 5 != 0:
             return
-        
+
         elapsed_min = (time.time() - self.start_time) / 60
         avg_gold = self.session_gold / self.loop_count
         avg_elixir = self.session_elixir / self.loop_count
         avg_dark = self.session_dark / self.loop_count
-        
+
         summary = (
             f"\n===== SESSION SUMMARY =====\n"
             f"Attacks: {self.loop_count}\n"

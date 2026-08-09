@@ -5,3 +5,5 @@ __pycache__/
 match_tool/__pycache__/
 match_tool/screenshots/
 .venv/bot_session_log.txt
+.DS_Store
+bot_session_log.txt

@@ -128,4 +128,8 @@ def take_screenshot(self, local_path: str = config.SCREENSHOT_NAME) -> None:
 - Enable verbose mode in `DeviceController` for detection debug output
 
 ### Adding UI Templates
-Place PNG templates in `ui_main_base/<category>/<name>/` directory for template matching.
+Place PNG templates in `templates/<category>/<name>/` directory for template matching.
+
+### Match Tool (`match_tool/`)
+- Frontend: `match_tool/templates/index.html`; server: `match_tool/app.py` (Flask, run with `python match_tool/app.py <port>`).
+- Do NOT use the Playwright browser tools to test this project. The user tests the UI themselves. Verify with server-side checks only (e.g. start the server and `curl` the endpoints), and never run destructive API calls (like `POST /api/clear_crops`) against real data.

@@ -1,19 +1,18 @@
 [project]
 name = "clash-of-clans-bot"
 version = "0.1.0"
-description = "Automated Clash of Clans bot using OpenCV and OCR"
+description = "Automated Clash of Clans bot using OpenCV"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "opencv-python",
-    "easyocr",
     "numpy",
     "Pillow",
     "flask",
 ]
 
 [project.scripts]
-coc-bot = "main:main_entry"
+coc-bot = "bot:main"
 match-tool = "match_tool.app:main"
 
 [dependency-groups]

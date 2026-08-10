@@ -1,5 +1,7 @@
 coc_env/
 screen.png
+live.png
+recorded_taps.txt
 .playwright-mcp/
 __pycache__/
 match_tool/__pycache__/
@@ -7,3 +9,12 @@ match_tool/screenshots/
 .venv/bot_session_log.txt
 .DS_Store
 bot_session_log.txt
+.mypy_cache/
+.ruff_cache/
+match_tool/edited/
+match_tool/crops/
+templates/walls/
+templates/continue/
+templates/event/
+templates/troops/event1/
+templates/troops/event2/

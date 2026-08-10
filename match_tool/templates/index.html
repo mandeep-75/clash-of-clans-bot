@@ -472,7 +472,6 @@
 
     document.getElementById('clearCropsBtn').onclick = () => {
       if (!savedCrops.length) return;
-      if (!confirm('Delete all saved crops?')) return;
       fetch('/api/clear_crops', { method: 'POST' })
         .then(r => r.json())
         .then(d => {
@@ -726,6 +725,7 @@
 
     // ---- Template manager ----
     let tplTree = [];
+    let tplExpanded = new Set(); // expanded folder rels (kept open across refreshes)
 
     function tplImageURL(rel) {
       return '/api/template_image?rel=' + encodeURIComponent(rel);
@@ -811,7 +811,6 @@
           header.className = 'tpl-folder-header';
           const chev = document.createElement('span');
           chev.className = 'chev';
-          chev.textContent = '▸';
           const fname = document.createElement('span');
           fname.className = 'fname';
           fname.textContent = folder.name;
@@ -830,6 +829,7 @@
             }).then(r => r.json()).then(d => {
               if (d.error) { alert(d.error); return; }
               refreshTemplates();
+              tplExpanded.add(folder.rel);
               setTimeout(() => { if (childrenBox) childrenBox.style.display = 'block'; }, 0);
             });
           };
@@ -844,13 +844,17 @@
 
           const childrenBox = document.createElement('div');
           childrenBox.className = 'tpl-children';
-          childrenBox.style.display = 'none';
+          const isOpen = tplExpanded.has(folder.rel);
+          childrenBox.style.display = isOpen ? 'block' : 'none';
 
           header.onclick = () => {
             const hidden = childrenBox.style.display === 'none';
             childrenBox.style.display = hidden ? 'block' : 'none';
             chev.textContent = hidden ? '▾' : '▸';
+            if (hidden) tplExpanded.add(folder.rel);
+            else tplExpanded.delete(folder.rel);
           };
+          chev.textContent = isOpen ? '▾' : '▸';
 
           if (files.length) {
             const grid = document.createElement('div');
@@ -869,7 +873,6 @@
               del.title = 'Delete ' + f.name;
               del.onclick = (ev) => {
                 ev.stopPropagation();
-                if (!confirm('Delete ' + f.rel + '?')) return;
                 fetch('/api/template_delete', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -997,7 +1000,6 @@
 
     document.getElementById('tplSavedClearBtn').onclick = () => {
       if (!savedCrops.length) return;
-      if (!confirm('Delete all saved crops?')) return;
       fetch('/api/clear_crops', { method: 'POST' })
         .then(r => r.json())
         .then(d => {
@@ -1224,7 +1226,6 @@ document.getElementById('editTestBtn').onclick = () => {
     document.getElementById('editPreviewDelBtn').onclick = () => {
       const item = document.getElementById('editPreview')._item;
       if (!item) return;
-      if (!confirm('Delete edited image ' + item.id + '?')) return;
       fetch('/api/edited/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1264,7 +1265,6 @@ document.getElementById('editTestBtn').onclick = () => {
         del.style.cssText = 'position:absolute;top:1px;right:1px;background:rgba(26,29,36,0.85);color:#ff7a7a;border:1px solid #343a47;border-radius:3px;font-size:11px;line-height:1;cursor:pointer;';
         del.onclick = (ev) => {
           ev.stopPropagation();
-          if (!confirm('Delete edited image ' + c.id + '?')) return;
           fetch('/api/edited/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1321,7 +1321,6 @@ document.getElementById('editTestBtn').onclick = () => {
 
     document.getElementById('editStoreRemoveBtn').onclick = () => {
       if (!editList.length) return;
-      if (!confirm('Remove all edited images?')) return;
       fetch('/api/edited/clear', { method: 'POST' })
         .then(r => r.json())
         .then(d => {

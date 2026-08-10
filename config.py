@@ -1,27 +1,6 @@
 # =============================================================================
-# FLOW CONFIGURATION - Control which tasks run
-# =============================================================================
-# Set to True/False to enable/disable each task
-# The bot will run tasks in the order defined here
-FLOW_CONFIG = {
-    "collect_gold": True,
-    "collect_elixir": True,
-    "collect_dark_elixir": True,
-    "find_match": True,
-    "search_for_base": True,
-    "deploy_troops": True,
-    "deploy_heroes": True,
-    "deploy_spells": True,
-    "trigger_abilities": True,
-    "return_home": True,
-}
-
-# =============================================================================
 # CONFIGURATION
 # =============================================================================
-
-# Discord Webhook URL for notifications (leave empty to disable)
-DISCORD_WEBHOOK_URL = ""
 
 # Screenshot filename (used for all template matching)
 SCREENSHOT_NAME = "screen.png"
@@ -29,24 +8,62 @@ SCREENSHOT_NAME = "screen.png"
 # Log file for session tracking
 LOG_FILE = "bot_session_log.txt"
 
-# Random offset ranges to make clicks appear more human-like
-# Higher values = more variation in tap position
-RANDOM_OFFSET = 3  # For troop deployments
-RANDOM_OFFSET_HEROES = 3  # For hero deployments
-RANDOM_OFFSET_SPELLS = 25  # For spell deployments (larger area)
+# Tap jitter: each tap lands randomly within ± this many pixels (0-5 px)
+TAP_OFFSET_MAX = 5
 
-# Resource thresholds for base selection
-# Bot will attack bases that meet ALL of these minimums:
-GOLD_THRESHOLD = 500_000  # Minimum gold required
-ELIXIR_THRESHOLD = 500_000  # Minimum elixir required
-DARK_ELIXIR_THRESHOLD = 0  # Minimum dark elixir required
-MAX_TROPHIES_ATTACK_THRESHOLD = 30  # Reserved for future trophy-based filtering
+# =============================================================================
+# DETECTION
+# =============================================================================
+# Minimum template match confidence (0.0-1.0)
+MATCH_THRESHOLD = 0.8
+
+# Seconds between button polls while waiting for a button to appear
+BUTTON_POLL_INTERVAL = 1
+
+# =============================================================================
+# DEVICE / SUBPROCESS
+# =============================================================================
+# Timeout (seconds) for every adb subprocess call
+ADB_TIMEOUT = 5
+
+# Number of consecutive device failures (tap / screenshot / health check)
+# before the bot gives up and stops instead of silently looping forever.
+MAX_CONSECUTIVE_FAILURES = 5
+
+# =============================================================================
+# CLICK CONTROL - top-level control over every tap (see utils/click_controller.py)
+# =============================================================================
+# Set False to globally disable every click (dry-run mode: detects but never taps)
+CLICK_ENABLED = True
+# Seconds to pause after each tap (human-like pacing; larger = slower, safer)
+CLICK_DELAY = 0.05
+# Finger-down duration per tap (seconds): random within this small range
+TAP_HOLD_MIN = 0.05
+TAP_HOLD_MAX = 0.15
+# Path to log every click (leave empty to disable click logging)
+CLICK_LOG = ""
 
 # =============================================================================
 # TIMEOUTS (in seconds)
 # =============================================================================
-BASE_SEARCH_TIMEOUT = 120  # Maximum time to spend searching for a suitable base
 RETURN_HOME_TIMEOUT = 210  # Maximum time to wait for return home button after battle
+
+# Max searches per attack: bot attacks a random base after 1..this many searches
+MAX_BASE_SEARCHES = 3
+
+# =============================================================================
+# FLOW PACING (sleeps between bot actions)
+# =============================================================================
+# Wait for the unit-selection UI to appear after picking a troop/spell/hero
+SELECTION_UI_DELAY = 0.3
+# Pause after reaching the attack screen and after tapping Attack
+POST_ATTACK_SLEEP = 2
+# Pause after pinch-zooming at battle start
+POST_ZOOM_SLEEP = 1.5
+# Pause after tapping Return Home (wait for the battle-end dialog)
+RETURN_HOME_TAP_SLEEP = 3
+# Range of random pauses between "Next" base searches
+SEARCH_NEXT_SLEEP_RANGE = (4.5, 5.0)
 
 # =============================================================================
 # ARMY COMPOSITION
@@ -75,47 +92,49 @@ SELECTED_HEROES = {
     "rolaychampion": 1,
 }
 
-# =============================================================================
-# UI TEMPLATE FOLDERS
-# =============================================================================
-# Path to builder menu button template (for future use)
-BUILD_MENU_BUTTON_FOLDER = "templates/builder_menu_button"
+# Hero abilities to trigger after deployment (template folder-name partials)
+HERO_ABILITIES = ["grand_warden"]
 
 # =============================================================================
 # DEPLOYMENT COORDINATES
 # =============================================================================
-# Number of troops to deploy per attack (should match your army camp capacity)
-TROOP_COUNT = 28
 
 TROOP_LOCATIONS = [
-    (173, 380),
-    (198, 395),
-    (220, 413),
-    (252, 438),
-    (293, 464),
-    (321, 479),
-    (178, 288),
-    (203, 271),
-    (227, 258),
-    (256, 230),
-    (295, 202),
-    (318, 188),
-    (357, 166),
-    (383, 144),
-    (406, 120),
-    (321, 479),
-    (178, 288),
-    (203, 271),
-    (227, 258),
-    (256, 230),
-    (295, 202),
-    (318, 188),
-    (357, 166),
-    (383, 144),
-    (406, 120),
-    (227, 258),
-    (256, 230),
-    (293, 464),
+    (226, 614),
+    (300, 568),
+    (354, 530),
+    (394, 516),
+    (432, 470),
+    (484, 430),
+    (530, 396),
+    (572, 364),
+    (616, 332),
+    (650, 304),
+    (704, 262),
+    (738, 242),
+    (804, 200),
+    (838, 162),
+    (882, 134),
+    (928, 104),
+    (836, 158),
+    (776, 200),
+    (718, 246),
+    (646, 296),
+    (610, 332),
+    (554, 380),
+    (512, 406),
+    (448, 454),
+    (394, 496),
+    (338, 532),
+    (256, 602),
+    (220, 624),
+    (298, 560),
+    (358, 516),
+    (422, 486),
+    (506, 430),
+    (588, 360),
+    (650, 302),
+    (754, 260),
 ]
 
 SPELL_LOCATIONS = [
@@ -132,6 +151,12 @@ HERO_LOCATIONS = [
     (214, 261),
     (157, 325),
     (214, 261),
+    (646, 296),
+    (610, 332),
+    (554, 380),
+    (512, 406),
+    (448, 454),
+    (394, 496),
 ]
 
 # =============================================================================
@@ -150,11 +175,16 @@ SCRCPY_SERVER_VERSION = "4.1"  # Must match the scrcpy-server.jar version
 SCRCPY_SERVER_JAR = "scrcpy-server.jar"  # Local path to the server jar
 SCRCPY_DEVICE_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar"  # Device path
 
-# Battle zoom: pinch-zoom when a battle starts.
+# Battle view: pinch-zoom when a battle starts, then pan to survey the base.
 #   "in"  -> fingers spread apart (zoom in)
 #   "out" -> fingers close together (zoom out)
 #   ""    -> disabled
-BATTLE_ZOOM = "in"
-ZOOM_START_DIST = 60  # Initial distance between fingers (px)
+BATTLE_ZOOM = "out"
+ZOOM_START_DIST = 400  # Initial distance between fingers (px)
 ZOOM_END_DIST = 320  # Final distance between fingers (px)
 ZOOM_STEPS = 25  # Number of move frames
+
+# Pan swipes after zooming: (x1, y1, x2, y2, steps, dt). Swipe left, then back.
+BATTLE_PAN_SWIPE_1 = (250, 300, 600, 300, 15, 0.01)  # Swipe left to right
+BATTLE_PAN_SWIPE_2 = (300, 250, 300, 600, 15, 0.01)  # Swipe top to bottom
+BATTLE_PAN_SWIPE_3 = (300, 200, 300, 650, 15, 0.01)  # Swipe top to bottom (more)

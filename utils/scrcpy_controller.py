@@ -9,6 +9,7 @@ images with a persistent ffmpeg process, and the control socket injects taps,
 swipes, pinch-zoom gestures and key events.
 """
 
+import os
 import random
 import re
 import socket
@@ -27,25 +28,10 @@ from utils.template_detector import TemplateDetector
 
 # --- scrcpy control protocol constants (reference §4, §5) --------------------
 
-MSG_INJECT_KEYCODE = 0
-MSG_INJECT_TEXT = 1
 MSG_INJECT_TOUCH_EVENT = 2
 MSG_INJECT_SCROLL_EVENT = 3
-MSG_BACK_OR_SCREEN_ON = 4
-MSG_EXPAND_NOTIFICATION_PANEL = 5
-MSG_EXPAND_SETTINGS_PANEL = 6
-MSG_COLLAPSE_PANELS = 7
-MSG_GET_CLIPBOARD = 8
-MSG_SET_CLIPBOARD = 9
-MSG_SET_DISPLAY_POWER = 10
-MSG_ROTATE_DEVICE = 11
-MSG_OPEN_HARD_KEYBOARD_SETTINGS = 15
-MSG_RESET_VIDEO = 17
-MSG_RESIZE_DISPLAY = 21
-MSG_SCAN_FILE = 22
 
 # Pointer IDs (reference §5.3)
-POINTER_ID_MOUSE = -1
 POINTER_ID_GENERIC_FINGER = -2
 POINTER_ID_VIRTUAL_FINGER = -3
 
@@ -53,13 +39,6 @@ POINTER_ID_VIRTUAL_FINGER = -3
 ACTION_DOWN = 0
 ACTION_UP = 1
 ACTION_MOVE = 2
-ACTION_CANCEL = 3
-ACTION_POINTER_DOWN = 5
-ACTION_POINTER_UP = 6
-
-# Key event actions (reference §7.1)
-KEY_ACTION_DOWN = 0
-KEY_ACTION_UP = 1
 
 # Video stream wire format (reference §10.2, scrcpy demuxer.c)
 VIDEO_CODEC_H264 = 0x68323634  # "h264"
@@ -68,13 +47,13 @@ PACKET_HEADER_SIZE = 12
 
 
 def _recv_exact(sock: socket.socket, n: int) -> bytes:
-    buf = b""
+    buf = bytearray()
     while len(buf) < n:
         chunk = sock.recv(n - len(buf))
         if not chunk:
             raise ConnectionError("socket closed")
-        buf += chunk
-    return buf
+        buf.extend(chunk)
+    return bytes(buf)
 
 
 def _float_to_u16fp(value: float) -> int:
@@ -133,6 +112,7 @@ class _FfmpegDecoder:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
+        self._restarted = False
         self._thread = threading.Thread(target=self._read_frames, daemon=True)
         self._thread.start()
 
@@ -191,6 +171,7 @@ class _VideoStream(threading.Thread):
         self._sock = sock
         self._on_size = on_size
         self._running = True
+        self._restarted = False
         self._decoder: _FfmpegDecoder | None = None
         self.size = (0, 0)
 
@@ -243,6 +224,9 @@ class _VideoStream(threading.Thread):
             if decoder:
                 decoder.close()
             decoder = self._decoder = _FfmpegDecoder(width, height)
+            if self._restarted:
+                print("Restarting ffmpeg decoder for video stream")
+            self._restarted = True
         decoder.feed(payload)
 
     def close(self) -> None:
@@ -281,6 +265,7 @@ class ScrcpyController(TemplateDetector):
         self.h = 0
 
         self._lock = threading.Lock()
+        self._size_lock = threading.Lock()
         self._video_sock: socket.socket | None = None
         self._control_sock: socket.socket | None = None
         self._listener: socket.socket | None = None
@@ -314,7 +299,9 @@ class ScrcpyController(TemplateDetector):
         if self.device_id:
             cmd += ["-s", self.device_id]
         cmd += args
-        return subprocess.run(cmd, capture_output=True, check=check)
+        return subprocess.run(
+            cmd, capture_output=True, check=check, timeout=config.ADB_TIMEOUT
+        )
 
     def _push_server(self) -> None:
         self._run_adb(
@@ -378,9 +365,15 @@ class ScrcpyController(TemplateDetector):
             control.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     def _on_video_size(self, width: int, height: int) -> None:
-        self.w, self.h = width, height
+        with self._size_lock:
+            self.w, self.h = width, height
         if self.verbose:
             print(f"Video stream size: {width}x{height}")
+
+    def _get_size(self) -> tuple[int, int]:
+        """Reads the current screen size (safe across the video thread)."""
+        with self._size_lock:
+            return self.w, self.h
 
     def _wm_size(self) -> tuple[int, int]:
         try:
@@ -388,33 +381,42 @@ class ScrcpyController(TemplateDetector):
             m = re.search(r"(\d+)\s*x\s*(\d+)", out.stdout.decode())
             if m:
                 return int(m.group(1)), int(m.group(2))
-        except (subprocess.CalledProcessError, OSError):
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
             pass
         return 0, 0
 
     def _wait_for_size(self, timeout: float = 10.0) -> None:
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self.w and self.h:
+            if self._get_size() != (0, 0):
                 return
             time.sleep(0.1)
         width, height = self._wm_size()
         if width and height:
-            self.w, self.h = width, height
+            with self._size_lock:
+                self.w, self.h = width, height
             return
         print("WARNING: could not determine screen size; touch input disabled")
 
+    def check_connection(self) -> bool:
+        """Returns True while the scrcpy video stream and control socket are alive."""
+        if self._control_sock is None:
+            return False
+        return self._video is not None and self._video.is_alive()
+
     # ---------------------------------------------------------------- messages
 
-    def _send(self, data: bytes) -> None:
+    def _send(self, data: bytes) -> bool:
         sock = self._control_sock
         if sock is None:
-            return
+            return False
         try:
             with self._lock:
                 sock.sendall(data)
+            return True
         except OSError as e:
             print(f"Failed to send control message: {e}")
+            return False
 
     def touch(
         self,
@@ -425,11 +427,12 @@ class ScrcpyController(TemplateDetector):
         pressure: float = 1.0,
         action_button: int = 0,
         buttons: int = 0,
-    ) -> None:
-        """Injects a touch event (reference §5.3)."""
-        if not self.w or not self.h:
+    ) -> bool:
+        """Injects a touch event (reference §5.3). Returns True if sent."""
+        w, h = self._get_size()
+        if not w or not h:
             print("WARNING: screen size unknown, touch event dropped")
-            return
+            return False
         msg = struct.pack(
             ">BbqiiHHHII",
             MSG_INJECT_TOUCH_EVENT,
@@ -437,27 +440,30 @@ class ScrcpyController(TemplateDetector):
             pointer_id,
             x,
             y,
-            self.w,
-            self.h,
+            w,
+            h,
             _float_to_u16fp(pressure),
             action_button,
             buttons,
         )
-        self._send(msg)
+        return self._send(msg)
 
     # ----------------------------------------------------------------- input
 
-    def tap(self, x: int, y: int, offset: int = 0, hold: float = 0.1) -> None:
+    def tap(self, x: int, y: int, offset: int = 0, hold: float = 0.1) -> bool:
         """Performs a human-like tap with random offset.
 
         `hold` is the delay between DOWN and UP; some games ignore taps that
         end too quickly, so keep it long enough to register.
+
+        Returns True if both touch events were sent.
         """
         tx = x + random.randint(-offset, offset)
         ty = y + random.randint(-offset, offset)
-        self.touch(ACTION_DOWN, POINTER_ID_GENERIC_FINGER, tx, ty)
+        down_ok = self.touch(ACTION_DOWN, POINTER_ID_GENERIC_FINGER, tx, ty)
         time.sleep(hold)
-        self.touch(ACTION_UP, POINTER_ID_GENERIC_FINGER, tx, ty)
+        up_ok = self.touch(ACTION_UP, POINTER_ID_GENERIC_FINGER, tx, ty)
+        return down_ok and up_ok
 
     def swipe(
         self,
@@ -477,6 +483,32 @@ class ScrcpyController(TemplateDetector):
             time.sleep(dt)
         self.touch(ACTION_UP, POINTER_ID_GENERIC_FINGER, x2, y2)
 
+    def scroll(
+        self,
+        x: int,
+        y: int,
+        hscroll: float = 0.0,
+        vscroll: float = 0.0,
+        buttons: int = 0,
+    ) -> None:
+        """Injects a scroll event (reference §5.4)."""
+        h = max(-32768, min(32767, round(hscroll * 32768)))
+        v = max(-32768, min(32767, round(vscroll * 32768)))
+        w, hh = self._get_size()
+        self._send(
+            struct.pack(
+                ">BiiiHhhI",
+                MSG_INJECT_SCROLL_EVENT,
+                x,
+                y,
+                w,
+                hh,
+                h,
+                v,
+                buttons,
+            )
+        )
+
     def pinch_zoom(
         self,
         direction: str = "in",
@@ -491,11 +523,12 @@ class ScrcpyController(TemplateDetector):
         `direction` "in" spreads the fingers apart (zoom in), "out" brings
         them together (zoom out).
         """
-        if not self.w or not self.h:
+        w, h = self._get_size()
+        if not w or not h:
             print("WARNING: screen size unknown, pinch zoom dropped")
             return
 
-        cx, cy = center or (self.w // 2, self.h // 2)
+        cx, cy = center or (w // 2, h // 2)
         if direction == "in":
             start, end = start_dist or 60, end_dist or 320
         else:
@@ -514,99 +547,46 @@ class ScrcpyController(TemplateDetector):
         self.touch(ACTION_UP, POINTER_ID_GENERIC_FINGER, int(cx - end), cy)
         self.touch(ACTION_UP, POINTER_ID_VIRTUAL_FINGER, int(cx + end), cy)
 
-    def key(
-        self,
-        keycode: int,
-        action: int = KEY_ACTION_DOWN,
-        repeat: int = 0,
-        metastate: int = 0,
-    ) -> None:
-        """Injects a keycode event (reference §5.1)."""
-        self._send(
-            struct.pack(
-                ">BBIII", MSG_INJECT_KEYCODE, action, keycode, repeat, metastate
-            )
-        )
-
-    def text(self, text: str) -> None:
-        """Injects UTF-8 text (reference §5.2)."""
-        raw = text.encode("utf-8")[:300]
-        self._send(struct.pack(">BI", MSG_INJECT_TEXT, len(raw)) + raw)
-
-    def back(self, action: int = KEY_ACTION_DOWN) -> None:
-        """Injects BACK (or turns the screen on if it is off)."""
-        self._send(struct.pack(">BB", MSG_BACK_OR_SCREEN_ON, action))
-
-    def home(self) -> None:
-        """Presses the HOME key."""
-        self.key(3, KEY_ACTION_DOWN)
-        time.sleep(0.05)
-        self.key(3, KEY_ACTION_UP)
-
-    def rotate(self) -> None:
-        """Rotates the device."""
-        self._send(bytes([MSG_ROTATE_DEVICE]))
-
-    def collapse_panels(self) -> None:
-        """Collapses the notification/quick-settings panels."""
-        self._send(bytes([MSG_COLLAPSE_PANELS]))
-
-    def scroll(
-        self,
-        x: int,
-        y: int,
-        hscroll: float = 0.0,
-        vscroll: float = 0.0,
-        buttons: int = 0,
-    ) -> None:
-        """Injects a scroll event (reference §5.4)."""
-        h = max(-32768, min(32767, round(hscroll * 32768)))
-        v = max(-32768, min(32767, round(vscroll * 32768)))
-        self._send(
-            struct.pack(
-                ">BiiiHhhI",
-                MSG_INJECT_SCROLL_EVENT,
-                x,
-                y,
-                self.w,
-                self.h,
-                h,
-                v,
-                buttons,
-            )
-        )
-
-    def set_clipboard(self, text: str, paste: bool = False, sequence: int = 1) -> None:
-        """Sets the device clipboard (reference §5.8)."""
-        raw = text.encode("utf-8")[:262130]  # 256 KB - 14
-        self._send(
-            struct.pack(">BQBI", MSG_SET_CLIPBOARD, sequence, int(paste), len(raw))
-            + raw
-        )
-
     # -------------------------------------------------------------- screenshots
 
-    def take_screenshot(self, local_path=config.SCREENSHOT_NAME) -> None:
+    def take_screenshot(self, local_path=config.SCREENSHOT_NAME) -> bool:
         """Captures a screenshot from the live video stream.
 
         Falls back to `adb screencap` if no decoded frame is available yet.
+        On failure the old screenshot file is removed so detection can never
+        act on a stale frame. Returns success.
         """
         frame = self._video.latest_frame if self._video else None
         if frame is not None:
-            cv2.imwrite(local_path, frame)
-            return
-        self._fallback_screencap(local_path)
+            if cv2.imwrite(local_path, frame):
+                return True
+            print("Failed to write screenshot frame")
+            self._remove_screenshot(local_path)
+            return False
+        return self._fallback_screencap(local_path)
 
-    def _fallback_screencap(self, local_path) -> None:
+    def _remove_screenshot(self, local_path) -> None:
+        try:
+            os.remove(local_path)
+        except OSError:
+            pass
+
+    def _fallback_screencap(self, local_path) -> bool:
         device_id = self.device_id
         if device_id is None:
-            return
+            return False
+        tmp_path = local_path + ".tmp"
         try:
             cmd = ["adb", "-s", device_id, "exec-out", "screencap", "-p"]
-            with open(local_path, "wb") as f:
-                subprocess.run(cmd, check=True, stdout=f)
-        except (subprocess.CalledProcessError, OSError) as e:
+            with open(tmp_path, "wb") as f:
+                subprocess.run(cmd, check=True, stdout=f, timeout=config.ADB_TIMEOUT)
+            os.replace(tmp_path, local_path)
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
             print(f"Failed to take screenshot: {e}")
+            self._remove_screenshot(tmp_path)
+            self._remove_screenshot(local_path)
+            return False
 
     # ------------------------------------------------------------------ teardown
 

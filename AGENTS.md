@@ -13,9 +13,9 @@ uv sync
 
 ### Running the Bot
 ```bash
-python main.py                    # Run with default device
-python main.py --device <ID>      # Run with specific ADB device
-python main.py --webhook <URL>    # Override Discord webhook
+python bot.py                   # Run with default device
+python bot.py --device <ID>     # Run with specific ADB device
+uv run coc-bot                  # Run via installed console script
 ```
 
 ### Linting & Formatting
@@ -90,8 +90,7 @@ def take_screenshot(self, local_path: str = config.SCREENSHOT_NAME) -> None:
 ```
 
 ### File Structure
-- Main entry point: `main.py`
-- Core logic: `bot.py`
+- Main entry point: `bot.py` (contains the CLI `main()` and the `CoCBot` flow)
 - Configuration: `config.py`
 - Utilities: `utils/` directory
 

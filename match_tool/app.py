@@ -7,7 +7,7 @@ import uuid
 
 import cv2
 import numpy as np
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
 app = Flask(
     __name__,
@@ -66,12 +66,17 @@ def image_dims(path: str) -> tuple[int, int] | None:
 
 
 def _safe_rel(rel: str | None) -> str | None:
-    """Resolves a templates-relative path, refusing to escape TEMPLATES_DIR."""
+    """Resolves a templates-relative path, refusing to escape TEMPLATES_DIR.
+
+    Symlinks are resolved with ``realpath`` so a link pointing outside the
+    templates dir cannot smuggle reads either.
+    """
     if not rel:
         return None
     normalized = rel.replace("\\", "/").lstrip("/")
-    target = os.path.abspath(os.path.join(TEMPLATES_DIR, normalized))
-    if not target.startswith(os.path.abspath(TEMPLATES_DIR) + os.sep):
+    base = os.path.realpath(TEMPLATES_DIR)
+    target = os.path.realpath(os.path.join(TEMPLATES_DIR, normalized))
+    if not (target == base or target.startswith(base + os.sep)):
         return None
     return normalized
 
@@ -93,9 +98,7 @@ def _template_tree(base: str, rel: str) -> list[dict]:
         elif entry.is_file() and entry.name.lower().endswith(
             (".png", ".jpg", ".jpeg", ".webp")
         ):
-            nodes.append(
-                {"name": entry.name, "rel": entry_rel, "type": "file"}
-            )
+            nodes.append({"name": entry.name, "rel": entry_rel, "type": "file"})
     return nodes
 
 
@@ -173,7 +176,7 @@ def api_image():
     """Returns the current full image."""
     if not os.path.exists(DEFAULT_IMAGE):
         return jsonify({"error": "No image loaded yet"}), 404
-    return Response(open(DEFAULT_IMAGE, "rb").read(), mimetype="image/png")
+    return send_file(DEFAULT_IMAGE, mimetype="image/png")
 
 
 @app.route("/api/upload_image", methods=["POST"])
@@ -199,7 +202,10 @@ def api_match():
     """
     data = request.get_json(silent=True) or {}
     crop = data.get("crop") or {}
-    threshold = float(data.get("threshold", 0.8))
+    try:
+        threshold = float(data.get("threshold", 0.8))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid threshold"}), 400
 
     try:
         cx, cy = int(crop["x"]), int(crop["y"])
@@ -238,7 +244,10 @@ def api_batch_match():
     """
     data = request.get_json(silent=True) or {}
     folders = data.get("folders") or []
-    threshold = float(data.get("threshold", 0.8))
+    try:
+        threshold = float(data.get("threshold", 0.8))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid threshold"}), 400
 
     full = cv2.imread(DEFAULT_IMAGE)
     if full is None:
@@ -246,9 +255,15 @@ def api_batch_match():
 
     results: dict[str, list[dict]] = {}
     for folder in folders:
+        rel = _safe_rel(str(folder))
+        if rel is None:
+            return jsonify({"error": f"Invalid folder: {folder}"}), 400
+        folder_path = os.path.join(TEMPLATES_DIR, rel)
+        if not os.path.isdir(folder_path):
+            return jsonify({"error": f"Folder not found: {folder}"}), 404
         folder_matches: list[dict] = []
-        for fname in sorted(os.listdir(folder)):
-            fpath = os.path.join(folder, fname)
+        for fname in sorted(os.listdir(folder_path)):
+            fpath = os.path.join(folder_path, fname)
             if not os.path.isfile(fpath):
                 continue
             tpl = cv2.imread(fpath)
@@ -291,7 +306,10 @@ def api_save_crop():
     Returns metadata including the matches found at save time.
     """
     data = request.get_json(silent=True) or {}
-    threshold = float(data.get("threshold", 0.8))
+    try:
+        threshold = float(data.get("threshold", 0.8))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid threshold"}), 400
 
     full = cv2.imread(DEFAULT_IMAGE)
     if full is None:
@@ -424,6 +442,7 @@ def api_template_upload():
     """Uploads images into a template folder (drag & drop).
 
     Body: multipart with `folder` (templates-relative) and multiple `files`.
+    Only image files are accepted and existing names are never overwritten.
     """
     folder = _safe_rel(request.form.get("folder"))
     if folder is None:
@@ -437,7 +456,15 @@ def api_template_upload():
         if not f or not f.filename:
             continue
         name = os.path.basename(f.filename)
-        f.save(os.path.join(folder_path, name))
+        if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+            return jsonify({"error": f"Unsupported file type: {name}"}), 400
+        dest = os.path.join(folder_path, name)
+        if os.path.exists(dest):
+            return jsonify({"error": f"File already exists: {name}"}), 400
+        f.save(dest)
+        if image_dims(dest) is None:
+            os.remove(dest)
+            return jsonify({"error": f"Not a valid image: {name}"}), 400
         saved.append({"name": name, "rel": posixpath.join(folder, name)})
 
     if not saved:
@@ -674,9 +701,11 @@ def find_matches_alpha(
     mt_b = mask * t[:, :, 2]
 
     s2 = float((mt_r + mt_g + mt_b).sum())
-    t2 = float((mask * (t[:, :, 0] * t[:, :, 0])).sum()
-               + (mask * (t[:, :, 1] * t[:, :, 1])).sum()
-               + (mask * (t[:, :, 2] * t[:, :, 2])).sum())
+    t2 = float(
+        (mask * (t[:, :, 0] * t[:, :, 0])).sum()
+        + (mask * (t[:, :, 1] * t[:, :, 1])).sum()
+        + (mask * (t[:, :, 2] * t[:, :, 2])).sum()
+    )
 
     def filt(src: np.ndarray, kern: np.ndarray) -> np.ndarray:
         return cv2.filter2D(
@@ -762,12 +791,17 @@ def api_match_edited():
     )
 
 
-
 def main() -> None:
     """Runs the match tool web server on http://127.0.0.1:<port>."""
     import sys
 
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8081
+    port = 8081
+    if len(sys.argv) > 1:
+        try:
+            port = int(sys.argv[1])
+        except ValueError:
+            print(f"Invalid port: {sys.argv[1]}")
+            return
     app.run(host="127.0.0.1", port=port, debug=False)
 
 

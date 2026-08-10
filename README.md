@@ -27,7 +27,6 @@ uv sync
 # Run the bot
 uv run coc-bot
 uv run coc-bot --device <DEVICE_ID>
-uv run coc-bot --webhook <URL>
 
 # Run the OpenCV match tool (live crop detection web app)
 uv run match-tool                # serves on http://127.0.0.1:8080
@@ -73,20 +72,14 @@ uv run mypy .
 All settings (loot thresholds, deployment coordinates, file paths) are now in `config.py`.  
 Edit this file to change your bot's behavior without touching the code.
 
-### 2. Discord Notifications
-Get real-time updates on your attacks!
-1. Open `config.py`.
-2. Add your **Discord Webhook URL** to `DISCORD_WEBHOOK_URL`.
-3. The bot will send a summary after every successful attack.
-
-### 3. Command Line Arguments
+### 2. Command Line Arguments
 Run the bot with specific options:
 ```bash
 # Run with a specific device ID
-python main.py --device <DEVICE_ID>
+python bot.py --device <DEVICE_ID>
 
-# Run with a specific Discord Webhook (overrides config)
-python main.py --webhook <URL>
+# Install / run as a console script instead
+uv run coc-bot
 ```
 
 

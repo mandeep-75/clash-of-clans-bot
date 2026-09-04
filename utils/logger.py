@@ -40,7 +40,9 @@ def setup_resource_logger() -> logging.Logger:
 
     file_handler = logging.FileHandler("resources.log", encoding="utf-8")
     file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
     logger.addHandler(file_handler)
+    logger.propagate = False
 
     return logger
 

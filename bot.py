@@ -152,6 +152,8 @@ class Bot:
 
         log.info("===== SESSION START =====")
         rlog.info("===== SESSION START =====")
+        for handler in rlog.handlers:
+            handler.flush()
 
         while not self.stop_flag:
             try:
@@ -276,6 +278,8 @@ class Bot:
                     )
                     log.info(report)
                     rlog.info(report)
+                    for handler in rlog.handlers:
+                        handler.flush()
 
                     self.batch_gold = 0
                     self.batch_elixir = 0
@@ -506,6 +510,8 @@ class Bot:
             f"Gold: {gold:,} | Elixir: {elixir:,} | DE: {dark_elixir:,} | "
             f"Total G: {self.total_gold:,} | E: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}"
         )
+        for handler in rlog.handlers:
+            handler.flush()
         log.info(f"Base meets resource thresholds (attack #{self.attacks})")
         return True
 

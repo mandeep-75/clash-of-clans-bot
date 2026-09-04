@@ -536,6 +536,13 @@ class Bot:
         filtered_results = self.ocr_reader.readtext(processed)
         filtered_value = self._extract_number(filtered_results)
 
+        if raw_value and raw_value > config.MAX_RESOURCE_VALUE:
+            log.warning(f"Raw OCR garbage: {raw_value}, retrying with invert")
+            raw_value = self._retry_ocr(crop, invert=True)
+        if filtered_value and filtered_value > config.MAX_RESOURCE_VALUE:
+            log.warning(f"Filtered OCR garbage: {filtered_value}, retrying with invert")
+            filtered_value = self._retry_ocr(crop, invert=True)
+
         if raw_value != filtered_value:
             log.info(f"OCR raw={raw_value} filtered={filtered_value}")
 
@@ -556,6 +563,21 @@ class Bot:
             nums = [c for c in text if c.isdigit()]
             if nums:
                 return int("".join(nums))
+        return None
+
+    def _retry_ocr(self, crop: np.ndarray, invert: bool = False) -> int | None:
+        """Retry OCR with alternative preprocessing."""
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
+        if invert:
+            blur = cv2.bitwise_not(blur)
+        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+        results = self.ocr_reader.readtext(bgr)
+        value = self._extract_number(results)
+        if value and value <= config.MAX_RESOURCE_VALUE:
+            return value
         return None
 
     def _save_resource_bboxes(

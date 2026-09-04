@@ -61,6 +61,8 @@ MAX_EVENT_TAPS = 3
 MIN_GOLD = 800000
 MIN_ELIXIR = 800000
 MIN_DARK_ELIXIR = 0  # Set to 0 to ignore dark elixir
+# Max plausible resource value - anything above is likely OCR garbage
+MAX_RESOURCE_VALUE = 5_000_000
 # OCR language for resource detection
 OCR_LANGUAGES = ["en"]
 # Separate bounding boxes for each resource (x, y, w, h)

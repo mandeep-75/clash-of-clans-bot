@@ -508,29 +508,27 @@ class Bot:
                 elixir = max(elixir, max(elixir_raw2, elixir_filt2))
                 dark_elixir = max(dark_elixir, max(de_raw2, de_filt2))
 
-        gold_crop = img[
+        gc = img[
             config.GOLD_CROP_REGION[1] : config.GOLD_CROP_REGION[1]
             + config.GOLD_CROP_REGION[3],
             config.GOLD_CROP_REGION[0] : config.GOLD_CROP_REGION[0]
             + config.GOLD_CROP_REGION[2],
         ]
-        elixir_crop = img[
+        ec = img[
             config.ELIXIR_CROP_REGION[1] : config.ELIXIR_CROP_REGION[1]
             + config.ELIXIR_CROP_REGION[3],
             config.ELIXIR_CROP_REGION[0] : config.ELIXIR_CROP_REGION[0]
             + config.ELIXIR_CROP_REGION[2],
         ]
-        de_crop = img[
+        dc = img[
             config.DARK_ELIXIR_CROP_REGION[1] : config.DARK_ELIXIR_CROP_REGION[1]
             + config.DARK_ELIXIR_CROP_REGION[3],
             config.DARK_ELIXIR_CROP_REGION[0] : config.DARK_ELIXIR_CROP_REGION[0]
             + config.DARK_ELIXIR_CROP_REGION[2],
         ]
-        self._save_ocr_comparison(gold_crop, "gold", gold_raw, gold_filt, gold)
-        self._save_ocr_comparison(
-            elixir_crop, "elixir", elixir_raw, elixir_filt, elixir
-        )
-        self._save_ocr_comparison(de_crop, "de", de_raw, de_filt, dark_elixir)
+        self._save_ocr_comparison(gc, "gold", gold_raw, gold_filt, gold)
+        self._save_ocr_comparison(ec, "elixir", elixir_raw, elixir_filt, elixir)
+        self._save_ocr_comparison(dc, "de", de_raw, de_filt, dark_elixir)
 
         log.info(
             f"Loot: {gold:,} gold, {elixir:,} elixir, {dark_elixir:,} DE "

@@ -475,7 +475,7 @@ class Bot:
     def wait_for_button(
         self,
         folder: str,
-        timeout: int = 30,
+        timeout: int = 180,
         dismiss_okay: bool = True,
     ) -> bool:
         """Poll screenshots until the button appears or timeout."""

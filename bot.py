@@ -486,9 +486,10 @@ class Bot:
         elixir = max(elixir_raw, elixir_filt)
         dark_elixir = max(de_raw, de_filt)
 
-        if gold == 0 or elixir == 0:
+        zeros = sum(1 for v in [gold, elixir, dark_elixir] if v == 0)
+        if zeros >= 2:
             log.info(
-                f"OCR returned 0 (G={gold} E={elixir}), retrying with fresh screenshot"
+                f"OCR {zeros} zeros (G={gold} E={elixir} DE={dark_elixir}), retrying"
             )
             time.sleep(1)
             self.device.take_screenshot(self.screenshot_name)

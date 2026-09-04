@@ -504,15 +504,43 @@ class Bot:
         return True
 
     def _read_resource(self, img: np.ndarray, region: tuple[int, int, int, int]) -> int:
-        """Read a single resource value from its bounding box."""
+        """Read a single resource value from its bounding box with preprocessing."""
         x, y, w, h = region
         crop = img[y : y + h, x : x + w]
-        results = self.ocr_reader.readtext(crop)
+        processed = self._preprocess_resource(crop)
+
+        raw_results = self.ocr_reader.readtext(crop)
+        raw_value = self._extract_number(raw_results)
+
+        filtered_results = self.ocr_reader.readtext(processed)
+        filtered_value = self._extract_number(filtered_results)
+
+        if raw_value and filtered_value:
+            if raw_value != filtered_value:
+                log.warning(
+                    f"OCR mismatch: raw={raw_value} filtered={filtered_value}, using filtered"
+                )
+            return filtered_value
+        return raw_value or filtered_value or 0
+
+    def _preprocess_resource(self, crop: np.ndarray) -> np.ndarray:
+        """Apply filters to improve OCR accuracy on resource text."""
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        denoised = cv2.fastNlMeansDenoising(upscaled, h=10)
+        _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        bgr = cv2.cvtColor(cleaned, cv2.COLOR_GRAY2BGR)
+        return bgr
+
+    def _extract_number(self, results: list) -> int | None:
+        """Extract the first number from OCR results."""
         for _, text, _ in results:
             nums = [c for c in text if c.isdigit()]
             if nums:
                 return int("".join(nums))
-        return 0
+        return None
 
     def _save_resource_bboxes(
         self,
@@ -521,17 +549,32 @@ class Bot:
         elixir: int,
         dark_elixir: int,
     ) -> None:
-        """Draw and save bounding boxes for resource regions."""
+        """Draw and save bounding boxes + preprocessed crops for comparison."""
         vis = img.copy()
         regions = [
             (config.GOLD_CROP_REGION, f"Gold: {gold}", (0, 215, 255)),
             (config.ELIXIR_CROP_REGION, f"Elixir: {elixir}", (255, 0, 255)),
             (config.DARK_ELIXIR_CROP_REGION, f"DE: {dark_elixir}", (0, 0, 255)),
         ]
+
+        raw_crops = []
+        filtered_crops = []
         for (x, y, w, h), label, color in regions:
             cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
             cv2.putText(vis, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            crop = img[y : y + h, x : x + w]
+            processed = self._preprocess_resource(crop)
+            raw_crops.append(crop)
+            filtered_crops.append(processed)
+
         cv2.imwrite("resource_bboxes.png", vis)
+
+        raw_row = np.hstack([cv2.resize(c, None, fx=2, fy=2) for c in raw_crops])
+        filtered_row = np.hstack(
+            [cv2.resize(c, None, fx=2, fy=2) for c in filtered_crops]
+        )
+        comparison = np.vstack([raw_row, filtered_row])
+        cv2.imwrite("resource_comparison.png", comparison)
 
     def wait_for_button(
         self,

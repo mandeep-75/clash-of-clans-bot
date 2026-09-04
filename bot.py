@@ -659,7 +659,7 @@ class Bot:
         filtered_value: int | None,
         best: int,
     ) -> None:
-        """Save combined comparison of all OCR strategies on this crop."""
+        """Save combined comparison of all OCR strategies with their detected values."""
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
@@ -671,27 +671,39 @@ class Bot:
         l, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
         l = clahe.apply(l)
-        contrast = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
-        contrast = cv2.cvtColor(contrast, cv2.COLOR_BGR2GRAY)
+        enhanced = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        contrast = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
         contrast = cv2.resize(contrast, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
-        strategies = ["Raw", "Blur", "Sharpen", "Denoise", "Contrast"]
-        values = [raw_value, filtered_value, None, None, None]
-        images = [upscaled, blur, sharpened, denoised, contrast]
+        strategies = {
+            "Raw": (upscaled, raw_value),
+            "Blur": (blur, filtered_value),
+            "Sharpen": (sharpened, self._run_ocr(sharpened)),
+            "Denoise": (denoised, self._run_ocr(denoised)),
+            "Contrast": (contrast, self._run_ocr(contrast)),
+        }
 
         panels = []
-        for strat, val, img_ in zip(strategies, values, images):
-            label = f"{strat}: {val}" if val else strat
+        for strat, (img_, val) in strategies.items():
+            color = (0, 255, 0) if val == best else (200, 200, 200)
+            label = f"{strat}: {val:,}" if val else strat
             panel = (
                 cv2.cvtColor(img_, cv2.COLOR_GRAY2BGR) if len(img_.shape) == 2 else img_
             )
-            cv2.putText(
-                panel, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1
-            )
+            cv2.putText(panel, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             panels.append(panel)
 
         row = np.hstack(panels)
         cv2.imwrite(f"ocr_{name}.png", row)
+
+    def _run_ocr(self, img: np.ndarray) -> int | None:
+        """Run OCR on a grayscale or BGR image and return the number."""
+        if len(img.shape) == 2:
+            bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        else:
+            bgr = img
+        results = self.ocr_reader.readtext(bgr)
+        return self._extract_number(results)
 
     def wait_for_button(
         self,

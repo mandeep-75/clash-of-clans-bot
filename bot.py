@@ -536,17 +536,19 @@ class Bot:
         filtered_results = self.ocr_reader.readtext(processed)
         filtered_value = self._extract_number(filtered_results)
 
-        if raw_value and raw_value > config.MAX_RESOURCE_VALUE:
-            log.warning(f"Raw OCR garbage: {raw_value}, retrying with invert")
-            raw_value = self._retry_ocr(crop, invert=True)
-        if filtered_value and filtered_value > config.MAX_RESOURCE_VALUE:
-            log.warning(f"Filtered OCR garbage: {filtered_value}, retrying with invert")
-            filtered_value = self._retry_ocr(crop, invert=True)
+        candidates = [raw_value, filtered_value]
+        for strategy in ("invert", "adaptive", "sharpen", "scale4x"):
+            v = self._retry_ocr(crop, strategy)
+            if v:
+                candidates.append(v)
+
+        valid = [c for c in candidates if c and c <= config.MAX_RESOURCE_VALUE]
+        best = max(valid) if valid else 0
 
         if raw_value != filtered_value:
-            log.info(f"OCR raw={raw_value} filtered={filtered_value}")
+            log.info(f"OCR raw={raw_value} filt={filtered_value} best={best}")
 
-        return raw_value or 0, filtered_value or 0
+        return best, best
 
     def _preprocess_resource(self, crop: np.ndarray) -> np.ndarray:
         """Apply filters to improve OCR accuracy on resource text."""
@@ -565,14 +567,33 @@ class Bot:
                 return int("".join(nums))
         return None
 
-    def _retry_ocr(self, crop: np.ndarray, invert: bool = False) -> int | None:
-        """Retry OCR with alternative preprocessing."""
+    def _retry_ocr(self, crop: np.ndarray, strategy: str = "invert") -> int | None:
+        """Retry OCR with alternative preprocessing strategy."""
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-        blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
-        if invert:
+
+        if strategy == "invert":
+            blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
             blur = cv2.bitwise_not(blur)
-        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        elif strategy == "adaptive":
+            blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
+            thresh = cv2.adaptiveThreshold(
+                blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+            )
+        elif strategy == "sharpen":
+            kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+            sharpened = cv2.filter2D(upscaled, -1, kernel)
+            _, thresh = cv2.threshold(
+                sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+            )
+        elif strategy == "scale4x":
+            big = cv2.resize(gray, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+            blur = cv2.GaussianBlur(big, (3, 3), 0)
+            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        else:
+            return None
+
         bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
         results = self.ocr_reader.readtext(bgr)
         value = self._extract_number(results)

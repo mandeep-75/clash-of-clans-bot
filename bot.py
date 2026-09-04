@@ -616,41 +616,8 @@ class Bot:
         elixir: int,
         dark_elixir: int,
     ) -> None:
-        """Draw and save bounding boxes + preprocessed crops for comparison."""
-        vis = img.copy()
-        regions = [
-            (config.GOLD_CROP_REGION, f"Gold: {gold}", (0, 215, 255)),
-            (config.ELIXIR_CROP_REGION, f"Elixir: {elixir}", (255, 0, 255)),
-            (config.DARK_ELIXIR_CROP_REGION, f"DE: {dark_elixir}", (0, 0, 255)),
-        ]
-
-        raw_crops = []
-        filtered_crops = []
-        for (x, y, w, h), label, color in regions:
-            cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
-            cv2.putText(vis, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
-            crop = img[y : y + h, x : x + w]
-            processed = self._preprocess_resource(crop)
-            raw_crops.append(crop)
-            filtered_crops.append(processed)
-
-        cv2.imwrite("resource_bboxes.png", vis)
-
-        target_w = 400
-        raw_row = np.hstack(
-            [
-                cv2.resize(c, (target_w, c.shape[0] * target_w // c.shape[1]))
-                for c in raw_crops
-            ]
-        )
-        filtered_row = np.hstack(
-            [
-                cv2.resize(c, (target_w, c.shape[0] * target_w // c.shape[1]))
-                for c in filtered_crops
-            ]
-        )
-        comparison = np.vstack([raw_row, filtered_row])
-        cv2.imwrite("resource_comparison.png", comparison)
+        """No-op: resource debug images disabled."""
+        return
 
     def wait_for_button(
         self,

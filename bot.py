@@ -508,28 +508,6 @@ class Bot:
                 elixir = max(elixir, max(elixir_raw2, elixir_filt2))
                 dark_elixir = max(dark_elixir, max(de_raw2, de_filt2))
 
-        gc = img[
-            config.GOLD_CROP_REGION[1] : config.GOLD_CROP_REGION[1]
-            + config.GOLD_CROP_REGION[3],
-            config.GOLD_CROP_REGION[0] : config.GOLD_CROP_REGION[0]
-            + config.GOLD_CROP_REGION[2],
-        ]
-        ec = img[
-            config.ELIXIR_CROP_REGION[1] : config.ELIXIR_CROP_REGION[1]
-            + config.ELIXIR_CROP_REGION[3],
-            config.ELIXIR_CROP_REGION[0] : config.ELIXIR_CROP_REGION[0]
-            + config.ELIXIR_CROP_REGION[2],
-        ]
-        dc = img[
-            config.DARK_ELIXIR_CROP_REGION[1] : config.DARK_ELIXIR_CROP_REGION[1]
-            + config.DARK_ELIXIR_CROP_REGION[3],
-            config.DARK_ELIXIR_CROP_REGION[0] : config.DARK_ELIXIR_CROP_REGION[0]
-            + config.DARK_ELIXIR_CROP_REGION[2],
-        ]
-        self._save_ocr_comparison(gc, "gold", gold_raw, gold_filt, gold)
-        self._save_ocr_comparison(ec, "elixir", elixir_raw, elixir_filt, elixir)
-        self._save_ocr_comparison(dc, "de", de_raw, de_filt, dark_elixir)
-
         log.info(
             f"Loot: {gold:,} gold, {elixir:,} elixir, {dark_elixir:,} DE "
             f"(raw: {gold_raw:,}G {elixir_raw:,}E {de_raw:,}DE)"
@@ -661,60 +639,6 @@ class Bot:
         if value and value <= config.MAX_RESOURCE_VALUE:
             return value
         return None
-
-    def _save_ocr_comparison(
-        self,
-        crop: np.ndarray,
-        name: str,
-        raw_value: int | None,
-        filtered_value: int | None,
-        best: int,
-    ) -> None:
-        """Save combined comparison of all OCR strategies with their detected values."""
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-
-        blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
-        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-        sharpened = cv2.filter2D(upscaled, -1, kernel)
-        denoised = cv2.fastNlMeansDenoising(upscaled, h=10)
-        lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        enhanced = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
-        contrast = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-        contrast = cv2.resize(contrast, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-
-        strategies = {
-            "Raw": (upscaled, raw_value),
-            "Blur": (blur, filtered_value),
-            "Sharpen": (sharpened, self._run_ocr(sharpened)),
-            "Denoise": (denoised, self._run_ocr(denoised)),
-            "Contrast": (contrast, self._run_ocr(contrast)),
-        }
-
-        panels = []
-        for strat, (img_, val) in strategies.items():
-            color = (0, 255, 0) if val == best else (200, 200, 200)
-            label = f"{strat}: {val:,}" if val else strat
-            panel = (
-                cv2.cvtColor(img_, cv2.COLOR_GRAY2BGR) if len(img_.shape) == 2 else img_
-            )
-            cv2.putText(panel, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-            panels.append(panel)
-
-        row = np.hstack(panels)
-        cv2.imwrite(f"ocr_{name}.png", row)
-
-    def _run_ocr(self, img: np.ndarray) -> int | None:
-        """Run OCR on a grayscale or BGR image and return the number."""
-        if len(img.shape) == 2:
-            bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        else:
-            bgr = img
-        results = self.ocr_reader.readtext(bgr)
-        return self._extract_number(results)
 
     def wait_for_button(
         self,

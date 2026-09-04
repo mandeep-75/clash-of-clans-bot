@@ -585,12 +585,23 @@ class Bot:
                 candidates.append(v)
 
         valid = [c for c in candidates if c and c <= config.MAX_RESOURCE_VALUE]
-        best = max(valid) if valid else 0
+        best = self._most_consensus(valid) if valid else 0
 
         if raw_value != filtered_value:
             log.info(f"OCR raw={raw_value} filt={filtered_value} best={best}")
 
         return best, best
+
+    def _most_consensus(self, values: list[int]) -> int:
+        """Pick the value that most strategies agree on. Ties go to the median."""
+        from collections import Counter
+
+        counts = Counter(values)
+        max_count = max(counts.values())
+        tied = [v for v, c in counts.items() if c == max_count]
+        if len(tied) == 1:
+            return tied[0]
+        return sorted(tied)[len(tied) // 2]
 
     def _preprocess_resource(self, crop: np.ndarray) -> np.ndarray:
         """Apply filters to improve OCR accuracy on resource text."""

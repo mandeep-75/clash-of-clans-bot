@@ -486,6 +486,27 @@ class Bot:
         elixir = max(elixir_raw, elixir_filt)
         dark_elixir = max(de_raw, de_filt)
 
+        if gold == 0 or elixir == 0:
+            log.info(
+                f"OCR returned 0 (G={gold} E={elixir}), retrying with fresh screenshot"
+            )
+            time.sleep(1)
+            self.device.take_screenshot(self.screenshot_name)
+            img2 = cv2.imread(self.screenshot_name)
+            if img2 is not None:
+                gold_raw2, gold_filt2 = self._read_resource(
+                    img2, config.GOLD_CROP_REGION
+                )
+                elixir_raw2, elixir_filt2 = self._read_resource(
+                    img2, config.ELIXIR_CROP_REGION
+                )
+                de_raw2, de_filt2 = self._read_resource(
+                    img2, config.DARK_ELIXIR_CROP_REGION
+                )
+                gold = max(gold, max(gold_raw2, gold_filt2))
+                elixir = max(elixir, max(elixir_raw2, elixir_filt2))
+                dark_elixir = max(dark_elixir, max(de_raw2, de_filt2))
+
         gold_crop = img[
             config.GOLD_CROP_REGION[1] : config.GOLD_CROP_REGION[1]
             + config.GOLD_CROP_REGION[3],

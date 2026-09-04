@@ -537,7 +537,7 @@ class Bot:
         filtered_value = self._extract_number(filtered_results)
 
         candidates = [raw_value, filtered_value]
-        for strategy in ("sharpen", "contrast", "denoise"):
+        for strategy in ("sharpen", "contrast"):
             v = self._retry_ocr(crop, strategy)
             if v:
                 candidates.append(v)

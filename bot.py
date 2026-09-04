@@ -486,8 +486,6 @@ class Bot:
         elixir = max(elixir_raw, elixir_filt)
         dark_elixir = max(de_raw, de_filt)
 
-        self._save_resource_bboxes(img, gold, elixir, dark_elixir)
-
         log.info(
             f"Loot: {gold:,} gold, {elixir:,} elixir, {dark_elixir:,} DE "
             f"(raw: {gold_raw:,}G {elixir_raw:,}E {de_raw:,}DE)"
@@ -544,6 +542,8 @@ class Bot:
 
         valid = [c for c in candidates if c and c <= config.MAX_RESOURCE_VALUE]
         best = max(valid) if valid else 0
+
+        self._save_ocr_comparison(crop, raw_value, filtered_value, best)
 
         if raw_value != filtered_value:
             log.info(f"OCR raw={raw_value} filt={filtered_value} best={best}")
@@ -609,15 +609,46 @@ class Bot:
             return value
         return None
 
-    def _save_resource_bboxes(
+    def _save_ocr_comparison(
         self,
-        img: np.ndarray,
-        gold: int,
-        elixir: int,
-        dark_elixir: int,
+        crop: np.ndarray,
+        raw_value: int | None,
+        filtered_value: int | None,
+        best: int,
     ) -> None:
-        """No-op: resource debug images disabled."""
-        return
+        """Save combined comparison of all OCR strategies on this crop."""
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+
+        blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
+        kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+        sharpened = cv2.filter2D(upscaled, -1, kernel)
+        denoised = cv2.fastNlMeansDenoising(upscaled, h=10)
+        lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        contrast = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        contrast = cv2.cvtColor(contrast, cv2.COLOR_BGR2GRAY)
+        contrast = cv2.resize(contrast, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+
+        names = ["Raw", "Blur", "Sharpen", "Denoise", "Contrast"]
+        values = [raw_value, filtered_value, None, None, None]
+        images = [upscaled, blur, sharpened, denoised, contrast]
+
+        panels = []
+        for name, val, img_ in zip(names, values, images):
+            label = f"{name}: {val}" if val else name
+            panel = (
+                cv2.cvtColor(img_, cv2.COLOR_GRAY2BGR) if len(img_.shape) == 2 else img_
+            )
+            cv2.putText(
+                panel, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1
+            )
+            panels.append(panel)
+
+        row = np.hstack(panels)
+        cv2.imwrite("ocr_comparison.png", row)
 
     def wait_for_button(
         self,

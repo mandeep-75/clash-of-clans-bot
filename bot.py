@@ -138,6 +138,8 @@ class Bot:
         self.total_elixir = 0
         self.total_dark_elixir = 0
         self.attacks = 0
+        self.total_attack_time = 0.0
+        self.batch_start_time = time.time()
 
     def run(self):
         """Main bot loop."""
@@ -149,6 +151,7 @@ class Bot:
         while not self.stop_flag:
             try:
                 self.loop_count += 1
+                loop_start = time.time()
                 log.info(f"--- LOOP {self.loop_count} ---")
 
                 if not self.device.check_connection():
@@ -240,6 +243,30 @@ class Bot:
                 # --- Return home ---
                 self._return_home()
 
+                # --- Attack timing ---
+                attack_duration = time.time() - loop_start
+                self.total_attack_time += attack_duration
+                avg_time = self.total_attack_time / self.attacks if self.attacks else 0
+                mins, secs = divmod(int(attack_duration), 60)
+                avg_mins, avg_secs = divmod(int(avg_time), 60)
+                log.info(f"Attack took {mins}m {secs}s | Avg: {avg_mins}m {avg_secs}s")
+                rlog.info(
+                    f"Attack #{self.attacks} | "
+                    f"Duration: {mins}m {secs}s | Avg: {avg_mins}m {avg_secs}s"
+                )
+
+                # --- Batch timing (every 10 attacks) ---
+                if self.attacks % 10 == 0:
+                    batch_elapsed = int(time.time() - self.batch_start_time)
+                    b_mins, b_secs = divmod(batch_elapsed, 60)
+                    log.info(
+                        f"===== 10 ATTACKS DONE =====\n"
+                        f"Time for 10 attacks: {b_mins}m {b_secs}s\n"
+                        f"Total attacks: {self.attacks}\n"
+                        f"==========================="
+                    )
+                    self.batch_start_time = time.time()
+
                 # --- Session summary (every 5 loops) ---
                 if self.loop_count % 5 == 0:
                     elapsed = int(time.time() - self.start_time)
@@ -264,10 +291,13 @@ class Bot:
 
         elapsed = int(time.time() - self.start_time)
         mins, secs = divmod(elapsed, 60)
+        avg_time = self.total_attack_time / self.attacks if self.attacks else 0
+        avg_mins, avg_secs = divmod(int(avg_time), 60)
         log.info(
             f"===== FINAL SUMMARY =====\n"
             f"Attacks: {self.attacks}/{self.loop_count} bases\n"
             f"Gold: {self.total_gold:,} | Elixir: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}\n"
+            f"Avg attack time: {avg_mins}m {avg_secs}s\n"
             f"Runtime: {mins}:{secs:02d}\n"
             f"=========================="
         )

@@ -486,6 +486,30 @@ class Bot:
         elixir = max(elixir_raw, elixir_filt)
         dark_elixir = max(de_raw, de_filt)
 
+        gold_crop = img[
+            config.GOLD_CROP_REGION[1] : config.GOLD_CROP_REGION[1]
+            + config.GOLD_CROP_REGION[3],
+            config.GOLD_CROP_REGION[0] : config.GOLD_CROP_REGION[0]
+            + config.GOLD_CROP_REGION[2],
+        ]
+        elixir_crop = img[
+            config.ELIXIR_CROP_REGION[1] : config.ELIXIR_CROP_REGION[1]
+            + config.ELIXIR_CROP_REGION[3],
+            config.ELIXIR_CROP_REGION[0] : config.ELIXIR_CROP_REGION[0]
+            + config.ELIXIR_CROP_REGION[2],
+        ]
+        de_crop = img[
+            config.DARK_ELIXIR_CROP_REGION[1] : config.DARK_ELIXIR_CROP_REGION[1]
+            + config.DARK_ELIXIR_CROP_REGION[3],
+            config.DARK_ELIXIR_CROP_REGION[0] : config.DARK_ELIXIR_CROP_REGION[0]
+            + config.DARK_ELIXIR_CROP_REGION[2],
+        ]
+        self._save_ocr_comparison(gold_crop, "gold", gold_raw, gold_filt, gold)
+        self._save_ocr_comparison(
+            elixir_crop, "elixir", elixir_raw, elixir_filt, elixir
+        )
+        self._save_ocr_comparison(de_crop, "de", de_raw, de_filt, dark_elixir)
+
         log.info(
             f"Loot: {gold:,} gold, {elixir:,} elixir, {dark_elixir:,} DE "
             f"(raw: {gold_raw:,}G {elixir_raw:,}E {de_raw:,}DE)"
@@ -542,8 +566,6 @@ class Bot:
 
         valid = [c for c in candidates if c and c <= config.MAX_RESOURCE_VALUE]
         best = max(valid) if valid else 0
-
-        self._save_ocr_comparison(crop, raw_value, filtered_value, best)
 
         if raw_value != filtered_value:
             log.info(f"OCR raw={raw_value} filt={filtered_value} best={best}")
@@ -612,6 +634,7 @@ class Bot:
     def _save_ocr_comparison(
         self,
         crop: np.ndarray,
+        name: str,
         raw_value: int | None,
         filtered_value: int | None,
         best: int,
@@ -632,13 +655,13 @@ class Bot:
         contrast = cv2.cvtColor(contrast, cv2.COLOR_BGR2GRAY)
         contrast = cv2.resize(contrast, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
-        names = ["Raw", "Blur", "Sharpen", "Denoise", "Contrast"]
+        strategies = ["Raw", "Blur", "Sharpen", "Denoise", "Contrast"]
         values = [raw_value, filtered_value, None, None, None]
         images = [upscaled, blur, sharpened, denoised, contrast]
 
         panels = []
-        for name, val, img_ in zip(names, values, images):
-            label = f"{name}: {val}" if val else name
+        for strat, val, img_ in zip(strategies, values, images):
+            label = f"{strat}: {val}" if val else strat
             panel = (
                 cv2.cvtColor(img_, cv2.COLOR_GRAY2BGR) if len(img_.shape) == 2 else img_
             )
@@ -648,7 +671,7 @@ class Bot:
             panels.append(panel)
 
         row = np.hstack(panels)
-        cv2.imwrite("ocr_comparison.png", row)
+        cv2.imwrite(f"ocr_{name}.png", row)
 
     def wait_for_button(
         self,

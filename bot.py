@@ -268,24 +268,12 @@ class Bot:
                     lpm_k = int(loot_per_min / 1000)
 
                     report = (
-                        f"\n{'#'*50}\n"
-                        f"  5-ATTACK BATCH REPORT\n"
-                        f"{'#'*50}\n"
-                        f"  Batch time:      {b_mins}m {b_secs}s\n"
-                        f"  Avg time/attack: {a_mins}m {a_secs}s\n"
-                        f"  Gold/min:        {lpm_k}k\n"
-                        f"{'-'*50}\n"
-                        f"  BATCH LOOT:\n"
-                        f"    Gold:   {self.batch_gold:>12,}\n"
-                        f"    Elixir: {self.batch_elixir:>12,}\n"
-                        f"    DE:     {self.batch_dark_elixir:>12,}\n"
-                        f"{'-'*50}\n"
-                        f"  SESSION TOTAL:\n"
-                        f"    Attacks: {self.attacks}\n"
-                        f"    Gold:   {self.total_gold:>12,}\n"
-                        f"    Elixir: {self.total_elixir:>12,}\n"
-                        f"    DE:     {self.total_dark_elixir:>12,}\n"
-                        f"{'#'*50}\n"
+                        f"\n--- 5 ATTACKS ---\n"
+                        f"Time: {b_mins}m {b_secs}s | Avg: {a_mins}m {a_secs}s | Gold/min: {lpm_k}k\n"
+                        f"Batch:  {self.batch_gold:>12,}G  {self.batch_elixir:>12,}E  {self.batch_dark_elixir:>12,}DE\n"
+                        f"Total:  {self.total_gold:>12,}G  {self.total_elixir:>12,}E  {self.total_dark_elixir:>12,}DE\n"
+                        f"Attacks: {self.attacks}\n"
+                        f"------------------\n"
                     )
                     log.info(report)
                     rlog.info(report)
@@ -524,15 +512,10 @@ class Bot:
         self.attacks += 1
         self.batch_attacks += 1
         rlog.info(
-            f"{'='*50}\n"
-            f"  ATTACK #{self.attacks}\n"
-            f"{'='*50}\n"
-            f"  Gold:     {gold:>12,}\n"
-            f"  Elixir:   {elixir:>12,}\n"
-            f"  DE:       {dark_elixir:>12,}\n"
-            f"{'-'*50}\n"
-            f"  TOTAL     G:{self.total_gold:>12,}  E:{self.total_elixir:>12,}  DE:{self.total_dark_elixir:>12,}\n"
-            f"{'='*50}"
+            f"Attack #{self.attacks}\n"
+            f"  Gold:   {gold:>12,}   Total: {self.total_gold:>12,}\n"
+            f"  Elixir: {elixir:>12,}   Total: {self.total_elixir:>12,}\n"
+            f"  DE:     {dark_elixir:>12,}   Total: {self.total_dark_elixir:>12,}"
         )
         for handler in rlog.handlers:
             handler.flush()

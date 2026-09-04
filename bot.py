@@ -581,9 +581,18 @@ class Bot:
 
         cv2.imwrite("resource_bboxes.png", vis)
 
-        raw_row = np.hstack([cv2.resize(c, None, fx=2, fy=2) for c in raw_crops])
+        target_w = 400
+        raw_row = np.hstack(
+            [
+                cv2.resize(c, (target_w, c.shape[0] * target_w // c.shape[1]))
+                for c in raw_crops
+            ]
+        )
         filtered_row = np.hstack(
-            [cv2.resize(c, None, fx=2, fy=2) for c in filtered_crops]
+            [
+                cv2.resize(c, (target_w, c.shape[0] * target_w // c.shape[1]))
+                for c in filtered_crops
+            ]
         )
         comparison = np.vstack([raw_row, filtered_row])
         cv2.imwrite("resource_comparison.png", comparison)

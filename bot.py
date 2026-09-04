@@ -140,6 +140,10 @@ class Bot:
         self.attacks = 0
         self.total_attack_time = 0.0
         self.batch_start_time = time.time()
+        self.batch_gold = 0
+        self.batch_elixir = 0
+        self.batch_dark_elixir = 0
+        self.batch_attacks = 0
 
     def run(self):
         """Main bot loop."""
@@ -246,25 +250,36 @@ class Bot:
                 # --- Attack timing ---
                 attack_duration = time.time() - loop_start
                 self.total_attack_time += attack_duration
-                avg_time = self.total_attack_time / self.attacks if self.attacks else 0
-                mins, secs = divmod(int(attack_duration), 60)
-                avg_mins, avg_secs = divmod(int(avg_time), 60)
-                log.info(f"Attack took {mins}m {secs}s | Avg: {avg_mins}m {avg_secs}s")
-                rlog.info(
-                    f"Attack #{self.attacks} | "
-                    f"Duration: {mins}m {secs}s | Avg: {avg_mins}m {avg_secs}s"
-                )
 
-                # --- Batch timing (every 10 attacks) ---
-                if self.attacks % 10 == 0:
-                    batch_elapsed = int(time.time() - self.batch_start_time)
-                    b_mins, b_secs = divmod(batch_elapsed, 60)
-                    log.info(
-                        f"===== 10 ATTACKS DONE =====\n"
-                        f"Time for 10 attacks: {b_mins}m {b_secs}s\n"
-                        f"Total attacks: {self.attacks}\n"
-                        f"==========================="
+                # --- Batch report (every 5 attacks) ---
+                if self.batch_attacks >= 5:
+                    batch_time = time.time() - self.batch_start_time
+                    avg_time = self.total_attack_time / self.attacks
+                    loot_per_min = (
+                        self.total_gold / (self.total_attack_time / 60)
+                        if self.total_attack_time
+                        else 0
                     )
+                    b_mins, b_secs = divmod(int(batch_time), 60)
+                    a_mins, a_secs = divmod(int(avg_time), 60)
+                    lpm_k = int(loot_per_min / 1000)
+
+                    report = (
+                        f"===== 5 ATTACKS =====\n"
+                        f"Batch time: {b_mins}m {b_secs}s\n"
+                        f"Loot: {self.batch_gold:,}G {self.batch_elixir:,}E {self.batch_dark_elixir:,}DE\n"
+                        f"Avg time/attack: {a_mins}m {a_secs}s\n"
+                        f"Gold/min: {lpm_k}k\n"
+                        f"Total: {self.attacks} attacks | {self.total_gold:,}G {self.total_elixir:,}E\n"
+                        f"======================"
+                    )
+                    log.info(report)
+                    rlog.info(report)
+
+                    self.batch_gold = 0
+                    self.batch_elixir = 0
+                    self.batch_dark_elixir = 0
+                    self.batch_attacks = 0
                     self.batch_start_time = time.time()
 
                 # --- Session summary (every 5 loops) ---
@@ -293,13 +308,30 @@ class Bot:
         mins, secs = divmod(elapsed, 60)
         avg_time = self.total_attack_time / self.attacks if self.attacks else 0
         avg_mins, avg_secs = divmod(int(avg_time), 60)
+        loot_per_min = (
+            self.total_gold / (self.total_attack_time / 60)
+            if self.total_attack_time
+            else 0
+        )
+        lpm_k = int(loot_per_min / 1000)
+        skip_rate = (
+            ((self.loop_count - self.attacks) / self.loop_count * 100)
+            if self.loop_count
+            else 0
+        )
         log.info(
             f"===== FINAL SUMMARY =====\n"
-            f"Attacks: {self.attacks}/{self.loop_count} bases\n"
+            f"Bases scanned: {self.loop_count} | Attacked: {self.attacks} | Skip rate: {skip_rate:.0f}%\n"
             f"Gold: {self.total_gold:,} | Elixir: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}\n"
-            f"Avg attack time: {avg_mins}m {avg_secs}s\n"
+            f"Avg time/attack: {avg_mins}m {avg_secs}s | Gold/min: {lpm_k}k\n"
             f"Runtime: {mins}:{secs:02d}\n"
             f"=========================="
+        )
+        rlog.info(
+            f"SESSION END | "
+            f"Scanned: {self.loop_count} | Attacked: {self.attacks} | Skip: {skip_rate:.0f}% | "
+            f"Gold: {self.total_gold:,} | Elixir: {self.total_elixir:,} | DE: {self.total_dark_elixir:,} | "
+            f"Avg: {avg_mins}m {avg_secs}s | Gold/min: {lpm_k}k"
         )
         log.info("Bot stopped.")
 
@@ -463,12 +495,11 @@ class Bot:
         self.total_gold += gold
         self.total_elixir += elixir
         self.total_dark_elixir += dark_elixir
+        self.batch_gold += gold
+        self.batch_elixir += elixir
+        self.batch_dark_elixir += dark_elixir
         self.attacks += 1
-        rlog.info(
-            f"Attack #{self.attacks} | "
-            f"Gold: {gold:,} | Elixir: {elixir:,} | DE: {dark_elixir:,} | "
-            f"Total G: {self.total_gold:,} | E: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}"
-        )
+        self.batch_attacks += 1
         log.info(f"Base meets resource thresholds (attack #{self.attacks})")
         return True
 

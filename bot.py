@@ -537,7 +537,7 @@ class Bot:
         filtered_value = self._extract_number(filtered_results)
 
         candidates = [raw_value, filtered_value]
-        for strategy in ("invert", "adaptive", "sharpen", "scale4x"):
+        for strategy in ("invert", "sharpen", "denoise", "scale4x", "contrast", "edge"):
             v = self._retry_ocr(crop, strategy)
             if v:
                 candidates.append(v)
@@ -555,8 +555,7 @@ class Bot:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
         blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
-        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+        bgr = cv2.cvtColor(blur, cv2.COLOR_GRAY2BGR)
         return bgr
 
     def _extract_number(self, results: list) -> int | None:
@@ -573,28 +572,37 @@ class Bot:
         upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
 
         if strategy == "invert":
-            blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
-            blur = cv2.bitwise_not(blur)
-            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        elif strategy == "adaptive":
-            blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
-            thresh = cv2.adaptiveThreshold(
-                blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-            )
+            processed = cv2.bitwise_not(upscaled)
         elif strategy == "sharpen":
             kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-            sharpened = cv2.filter2D(upscaled, -1, kernel)
-            _, thresh = cv2.threshold(
-                sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-            )
+            processed = cv2.filter2D(upscaled, -1, kernel)
+        elif strategy == "denoise":
+            processed = cv2.fastNlMeansDenoising(upscaled, h=10)
         elif strategy == "scale4x":
-            big = cv2.resize(gray, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-            blur = cv2.GaussianBlur(big, (3, 3), 0)
-            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            processed = cv2.resize(
+                gray, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC
+            )
+        elif strategy == "contrast":
+            lab = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            enhanced = cv2.merge([l, a, b])
+            enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+            processed = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+            processed = cv2.resize(
+                processed, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC
+            )
+        elif strategy == "edge":
+            processed = cv2.Canny(upscaled, 50, 150)
         else:
             return None
 
-        bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+        if len(processed.shape) == 2:
+            bgr = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+        else:
+            bgr = processed
+
         results = self.ocr_reader.readtext(bgr)
         value = self._extract_number(results)
         if value and value <= config.MAX_RESOURCE_VALUE:

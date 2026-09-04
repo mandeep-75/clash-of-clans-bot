@@ -20,7 +20,7 @@ import numpy as np
 import config
 from utils.click_controller import ClickController
 from utils.device import list_devices
-from utils.logger import log
+from utils.logger import log, rlog
 from utils.scrcpy_controller import ScrcpyController
 
 HERO_TAP_DELAY = (0.3, 0.5)
@@ -434,6 +434,11 @@ class Bot:
         self.total_elixir += elixir
         self.total_dark_elixir += dark_elixir
         self.attacks += 1
+        rlog.info(
+            f"Attack #{self.attacks} | "
+            f"Gold: {gold:,} | Elixir: {elixir:,} | DE: {dark_elixir:,} | "
+            f"Total G: {self.total_gold:,} | E: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}"
+        )
         log.info(f"Base meets resource thresholds (attack #{self.attacks})")
         return True
 

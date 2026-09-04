@@ -29,4 +29,21 @@ def setup_logger() -> logging.Logger:
     return logger
 
 
+def setup_resource_logger() -> logging.Logger:
+    """Builds a file-only logger for resource tracking."""
+    logger = logging.getLogger("coc-bot-resources")
+    if logger.handlers:
+        return logger
+
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter(_LOG_FORMAT, _LOG_DATE_FORMAT)
+
+    file_handler = logging.FileHandler("resources.log", encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    return logger
+
+
 log = setup_logger()
+rlog = setup_resource_logger()

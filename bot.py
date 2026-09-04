@@ -529,21 +529,17 @@ class Bot:
 
         if raw_value and filtered_value:
             if raw_value != filtered_value:
-                log.warning(
-                    f"OCR mismatch: raw={raw_value} filtered={filtered_value}, using filtered"
-                )
-            return filtered_value
+                log.info(f"OCR raw={raw_value} filtered={filtered_value}")
+            return raw_value
         return raw_value or filtered_value or 0
 
     def _preprocess_resource(self, crop: np.ndarray) -> np.ndarray:
         """Apply filters to improve OCR accuracy on resource text."""
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         upscaled = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-        denoised = cv2.fastNlMeansDenoising(upscaled, h=10)
-        _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-        bgr = cv2.cvtColor(cleaned, cv2.COLOR_GRAY2BGR)
+        blur = cv2.GaussianBlur(upscaled, (3, 3), 0)
+        _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        bgr = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
         return bgr
 
     def _extract_number(self, results: list) -> int | None:

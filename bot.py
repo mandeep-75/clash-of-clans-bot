@@ -268,13 +268,24 @@ class Bot:
                     lpm_k = int(loot_per_min / 1000)
 
                     report = (
-                        f"===== 5 ATTACKS =====\n"
-                        f"Batch time: {b_mins}m {b_secs}s\n"
-                        f"Loot: {self.batch_gold:,}G {self.batch_elixir:,}E {self.batch_dark_elixir:,}DE\n"
-                        f"Avg time/attack: {a_mins}m {a_secs}s\n"
-                        f"Gold/min: {lpm_k}k\n"
-                        f"Total: {self.attacks} attacks | {self.total_gold:,}G {self.total_elixir:,}E\n"
-                        f"======================"
+                        f"\n{'#'*50}\n"
+                        f"  5-ATTACK BATCH REPORT\n"
+                        f"{'#'*50}\n"
+                        f"  Batch time:      {b_mins}m {b_secs}s\n"
+                        f"  Avg time/attack: {a_mins}m {a_secs}s\n"
+                        f"  Gold/min:        {lpm_k}k\n"
+                        f"{'-'*50}\n"
+                        f"  BATCH LOOT:\n"
+                        f"    Gold:   {self.batch_gold:>12,}\n"
+                        f"    Elixir: {self.batch_elixir:>12,}\n"
+                        f"    DE:     {self.batch_dark_elixir:>12,}\n"
+                        f"{'-'*50}\n"
+                        f"  SESSION TOTAL:\n"
+                        f"    Attacks: {self.attacks}\n"
+                        f"    Gold:   {self.total_gold:>12,}\n"
+                        f"    Elixir: {self.total_elixir:>12,}\n"
+                        f"    DE:     {self.total_dark_elixir:>12,}\n"
+                        f"{'#'*50}\n"
                     )
                     log.info(report)
                     rlog.info(report)
@@ -479,22 +490,29 @@ class Bot:
             log.warning("Failed to load screenshot for evaluation")
             return True
 
-        gold = self._read_resource(img, config.GOLD_CROP_REGION)
-        elixir = self._read_resource(img, config.ELIXIR_CROP_REGION)
-        dark_elixir = self._read_resource(img, config.DARK_ELIXIR_CROP_REGION)
+        gold_raw, gold_filt = self._read_resource(img, config.GOLD_CROP_REGION)
+        elixir_raw, elixir_filt = self._read_resource(img, config.ELIXIR_CROP_REGION)
+        de_raw, de_filt = self._read_resource(img, config.DARK_ELIXIR_CROP_REGION)
+
+        gold = max(gold_raw, gold_filt)
+        elixir = max(elixir_raw, elixir_filt)
+        dark_elixir = max(de_raw, de_filt)
 
         self._save_resource_bboxes(img, gold, elixir, dark_elixir)
 
-        log.info(f"Loot: {gold} gold, {elixir} elixir, {dark_elixir} dark elixir")
+        log.info(
+            f"Loot: {gold:,} gold, {elixir:,} elixir, {dark_elixir:,} DE "
+            f"(raw: {gold_raw:,}G {elixir_raw:,}E {de_raw:,}DE)"
+        )
 
         if gold < config.MIN_GOLD:
-            log.info(f"Skipping: gold {gold} < {config.MIN_GOLD}")
+            log.info(f"Skipping: gold {gold:,} < {config.MIN_GOLD:,}")
             return False
         if elixir < config.MIN_ELIXIR:
-            log.info(f"Skipping: elixir {elixir} < {config.MIN_ELIXIR}")
+            log.info(f"Skipping: elixir {elixir:,} < {config.MIN_ELIXIR:,}")
             return False
         if config.MIN_DARK_ELIXIR > 0 and dark_elixir < config.MIN_DARK_ELIXIR:
-            log.info(f"Skipping: dark elixir {dark_elixir} < {config.MIN_DARK_ELIXIR}")
+            log.info(f"Skipping: DE {dark_elixir:,} < {config.MIN_DARK_ELIXIR:,}")
             return False
 
         self.total_gold += gold
@@ -506,17 +524,25 @@ class Bot:
         self.attacks += 1
         self.batch_attacks += 1
         rlog.info(
-            f"Attack #{self.attacks} | "
-            f"Gold: {gold:,} | Elixir: {elixir:,} | DE: {dark_elixir:,} | "
-            f"Total G: {self.total_gold:,} | E: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}"
+            f"{'='*50}\n"
+            f"  ATTACK #{self.attacks}\n"
+            f"{'='*50}\n"
+            f"  Gold:     {gold:>12,}\n"
+            f"  Elixir:   {elixir:>12,}\n"
+            f"  DE:       {dark_elixir:>12,}\n"
+            f"{'-'*50}\n"
+            f"  TOTAL     G:{self.total_gold:>12,}  E:{self.total_elixir:>12,}  DE:{self.total_dark_elixir:>12,}\n"
+            f"{'='*50}"
         )
         for handler in rlog.handlers:
             handler.flush()
         log.info(f"Base meets resource thresholds (attack #{self.attacks})")
         return True
 
-    def _read_resource(self, img: np.ndarray, region: tuple[int, int, int, int]) -> int:
-        """Read a single resource value from its bounding box with preprocessing."""
+    def _read_resource(
+        self, img: np.ndarray, region: tuple[int, int, int, int]
+    ) -> tuple[int, int]:
+        """Read resource value returning (raw, filtered) from OCR."""
         x, y, w, h = region
         crop = img[y : y + h, x : x + w]
         processed = self._preprocess_resource(crop)
@@ -527,11 +553,10 @@ class Bot:
         filtered_results = self.ocr_reader.readtext(processed)
         filtered_value = self._extract_number(filtered_results)
 
-        if raw_value and filtered_value:
-            if raw_value != filtered_value:
-                log.info(f"OCR raw={raw_value} filtered={filtered_value}")
-            return raw_value
-        return raw_value or filtered_value or 0
+        if raw_value != filtered_value:
+            log.info(f"OCR raw={raw_value} filtered={filtered_value}")
+
+        return raw_value or 0, filtered_value or 0
 
     def _preprocess_resource(self, crop: np.ndarray) -> np.ndarray:
         """Apply filters to improve OCR accuracy on resource text."""

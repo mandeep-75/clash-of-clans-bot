@@ -151,6 +151,7 @@ class Bot:
         self.failures = 0
 
         log.info("===== SESSION START =====")
+        rlog.info("===== SESSION START =====")
 
         while not self.stop_flag:
             try:
@@ -500,6 +501,11 @@ class Bot:
         self.batch_dark_elixir += dark_elixir
         self.attacks += 1
         self.batch_attacks += 1
+        rlog.info(
+            f"Attack #{self.attacks} | "
+            f"Gold: {gold:,} | Elixir: {elixir:,} | DE: {dark_elixir:,} | "
+            f"Total G: {self.total_gold:,} | E: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}"
+        )
         log.info(f"Base meets resource thresholds (attack #{self.attacks})")
         return True
 

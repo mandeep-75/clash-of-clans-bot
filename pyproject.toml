@@ -9,6 +9,7 @@ dependencies = [
     "numpy",
     "Pillow",
     "flask",
+    "easyocr",
 ]
 
 [project.scripts]

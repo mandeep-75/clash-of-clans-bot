@@ -24,7 +24,7 @@ import sys
 import cv2
 
 import config
-from utils.device import DeviceController
+from utils.scrcpy_controller import ScrcpyController
 
 WINDOW_NAME = "Tap Recorder - click to record"
 
@@ -34,7 +34,7 @@ class TapRecorder:
 
     def __init__(
         self,
-        device: DeviceController,
+        device: ScrcpyController,
         output: str,
         max_taps: int,
         window_width: int,
@@ -179,10 +179,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.image:
-        device = DeviceController.__new__(DeviceController)  # no device needed
+        device = ScrcpyController.__new__(ScrcpyController)  # no device needed
     else:
         try:
-            device = DeviceController(device_id=args.device)
+            device = ScrcpyController(device_id=args.device)
         except RuntimeError as e:
             sys.exit(f"Failed to init device: {e}")
 

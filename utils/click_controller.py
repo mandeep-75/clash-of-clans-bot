@@ -10,6 +10,7 @@ import random
 import time
 
 import config
+from utils.logger import log
 
 
 class ClickController:
@@ -76,8 +77,13 @@ class ClickController:
 
         Returns True when the button was found and tapped.
         """
-        coords = self.device.detect_button(button_folder, threshold=threshold)
+        screenshot_path = getattr(self.device, "screenshot_name", None)
+        coords = self.device.detect_button(
+            button_folder, screenshot_path=screenshot_path, threshold=threshold
+        )
         if coords:
+            button_name = button_folder.rstrip("/").split("/")[-1]
+            log.info(f"Found {button_name} at ({coords[0]}, {coords[1]})")
             return self.tap(coords[0], coords[1], offset=offset)
         return False
 

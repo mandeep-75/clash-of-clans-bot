@@ -25,6 +25,9 @@ class TemplateDetector:
     def __init__(self):
         self._template_cache: dict[str, tuple[dict[str, float], list[np.ndarray]]] = {}
         self._screen_cache: tuple[tuple[str, int, int], np.ndarray | None] | None = None
+        # Per-instance screenshot file; lets several devices run at once
+        # without clobbering each other's frame. Override per device.
+        self.screenshot_name: str = config.SCREENSHOT_NAME
 
     def tap(self, x: int, y: int, offset: int = 0, hold: float = 0.0) -> bool:
         """Taps at (x, y); overridden by subclasses."""
@@ -33,14 +36,14 @@ class TemplateDetector:
     def detect_button(
         self,
         button_folder: str,
-        screenshot_path: str = config.SCREENSHOT_NAME,
+        screenshot_path: str | None = None,
         threshold: float = config.MATCH_THRESHOLD,
     ) -> tuple[int, int] | None:
         """Detects a button/template on the screen.
 
         Returns (x, y) tuple if found, else None.
         """
-        screen = self._load_screen(screenshot_path)
+        screen = self._load_screen(screenshot_path or self.screenshot_name)
         if screen is None:
             return None
 
@@ -80,20 +83,6 @@ class TemplateDetector:
                 )
             return x, y
         return None
-
-    def detect_and_tap(
-        self,
-        button_folder: str,
-        screenshot_path: str = config.SCREENSHOT_NAME,
-        threshold: float = config.MATCH_THRESHOLD,
-        offset: int = config.TAP_OFFSET_MAX,
-    ) -> bool:
-        """Detects a button and taps it immediately."""
-        coords = self.detect_button(button_folder, screenshot_path, threshold)
-        if coords:
-            self.tap(coords[0], coords[1], offset)
-            return True
-        return False
 
     # ------------------------------------------------------------------ caching
 

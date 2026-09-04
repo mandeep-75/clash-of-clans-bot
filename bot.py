@@ -1,141 +1,221 @@
 """Clash of Clans Bot - core flow and CLI entry point."""
 
+from __future__ import annotations
+
+import warnings
+
+warnings.filterwarnings("ignore", message=".*pin_memory.*")
+
 import argparse
+import os
 import random
 import subprocess
+import threading
 import time
+
+import cv2
+import easyocr
+import numpy as np
 
 import config
 from utils.click_controller import ClickController
-from utils.device import DeviceController
+from utils.device import list_devices
 from utils.logger import log
 from utils.scrcpy_controller import ScrcpyController
 
-HERO_TAP_DELAY_RANGE = (0.5, 1.0)
+HERO_TAP_DELAY = (0.3, 0.5)
+
+
+def select_devices() -> list[str] | None:
+    """Prompts the user to pick which connected devices to run."""
+    devices = list_devices()
+
+    if not devices:
+        print("No devices connected.")
+        return None
+    if len(devices) == 1:
+        print(f"One device detected: {devices[0]} (auto-selected)")
+        return devices
+
+    print("Multiple devices detected. Select which to run:")
+    for i, d in enumerate(devices, 1):
+        print(f"  [{i}] {d}")
+    print("  [a] all")
+
+    choice = input("Enter numbers separated by commas (e.g. 1,2), or 'a': ").strip()
+    if choice.lower() == "a":
+        return devices
+
+    chosen: list[str] = []
+    for part in choice.split(","):
+        part = part.strip()
+        if not part.isdigit():
+            continue
+        idx = int(part) - 1
+        if 0 <= idx < len(devices):
+            chosen.append(devices[idx])
+
+    if not chosen:
+        print("No valid devices selected.")
+        return None
+    return chosen
 
 
 def main() -> None:
     """CLI entry point: parse args and run the bot."""
     parser = argparse.ArgumentParser(description="Clash of Clans Bot")
     parser.add_argument("--device", type=str, help="ADB Device ID")
-    parser.add_argument(
-        "--control",
-        type=str,
-        choices=["scrcpy", "adb"],
-        default=config.CONTROL_MODE,
-        help="Input/screenshot backend (default: scrcpy)",
-    )
-
     args = parser.parse_args()
 
-    log.info("Initializing Device Controller...")
-    try:
-        device: DeviceController | ScrcpyController
-        if args.control == "scrcpy":
-            device = ScrcpyController(device_id=args.device)
-        else:
-            device = DeviceController(device_id=args.device)
-    except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
-        log.error(f"Failed to initialize {args.control} controller: {e}")
+    if args.device:
+        device_ids = [args.device]
+    else:
+        device_ids = select_devices()  # type: ignore[assignment]
+    if not device_ids:
         return
 
-    log.info("Starting CoC Bot...")
-    coc_bot = CoCBot(device_controller=device)
+    log.info(f"Initializing {len(device_ids)} device(s)...")
+    bots: list[Bot] = []
+    threads: list[threading.Thread] = []
 
     try:
-        coc_bot.run()
-    except KeyboardInterrupt:
-        log.info("Bot stopped by user.")
+        for i, device_id in enumerate(device_ids):
+            try:
+                device = ScrcpyController(
+                    device_id=device_id,
+                    port=config.SCRCPY_PORT + i,
+                    scid=config.SCRCPY_SCID + i,
+                )
+            except (RuntimeError, OSError, subprocess.CalledProcessError) as e:
+                log.error(f"Failed to init device {device_id}: {e}")
+                continue
+
+            device.screenshot_name = f"screen_{device_id}.png"
+            bot = Bot(device, device.screenshot_name)
+            bots.append(bot)
+            threads.append(
+                threading.Thread(target=bot.run, name=f"bot-{device_id}", daemon=True)
+            )
+
+        if not threads:
+            log.error("No devices initialized; exiting.")
+            return
+
+        for t in threads:
+            t.start()
+
+        log.info(f"Running {len(threads)} bot(s). Ctrl+C to stop.")
+
+        try:
+            while any(t.is_alive() for t in threads):
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            log.info("Shutting down...")
+            for bot in bots:
+                bot.stop_flag = True
+            for t in threads:
+                t.join(timeout=10)
     finally:
-        device.close()
+        for bot in bots:
+            bot.device.close()
 
 
-class CoCBot:
-    def __init__(self, device_controller):
-        self.device = device_controller
+class Bot:
+    def __init__(
+        self, device: ScrcpyController, screenshot_name: str = config.SCREENSHOT_NAME
+    ):
+        self.device = device
+        self.screenshot_name = screenshot_name
+        self.click = ClickController(device)
+        self.ocr_reader = easyocr.Reader(config.OCR_LANGUAGES, gpu=False)
 
         self.loop_count = 0
         self.start_time = time.time()
         self.stop_flag = False
-        self.consecutive_failures = 0
-
-        self.deployed_heroes = {}
-
-        self.click = ClickController(self.device)
-
-    def stop(self):
-        """Signal the bot to stop after current loop."""
-        self.stop_flag = True
+        self.failures = 0
+        self.deployed_heroes: dict[str, tuple[int, int]] = {}
+        self.total_gold = 0
+        self.total_elixir = 0
+        self.total_dark_elixir = 0
+        self.attacks = 0
 
     def run(self):
-        """Main bot loop: the whole flow, read top to bottom."""
+        """Main bot loop."""
         self.stop_flag = False
-        self.consecutive_failures = 0
+        self.failures = 0
 
-        log.info("===== NEW BOT SESSION STARTED =====")
+        log.info("===== SESSION START =====")
 
         while not self.stop_flag:
             try:
                 self.loop_count += 1
-                log.info("=" * 20 + f" LOOP {self.loop_count} " + "=" * 20)
+                log.info(f"--- LOOP {self.loop_count} ---")
 
                 if not self.device.check_connection():
-                    self._abort("Device connection lost")
+                    log.warning("Device disconnected")
+                    self.stop_flag = True
                     break
 
-                # ---------------- Collect resources ----------------
+                # --- Collect resources ---
                 for folder, name in (
                     ("gold_collect", "Gold"),
                     ("elixir_collect", "Elixir"),
                     ("dark_elixir_collect", "Dark Elixir"),
                 ):
-                    log.info(f"Collecting {name}...")
-                    self._screenshot()
-                    self.click.detect_and_tap(f"templates/{folder}")
+                    self.device.take_screenshot(self.screenshot_name)
+                    if self.click.detect_and_tap(f"templates/{folder}"):
+                        log.info(f"Collected {name}")
+                    else:
+                        log.info(f"{name} not on screen")
 
-                # ---------------- Navigate to attack ----------------
-                log.info("Navigating to attack...")
-
-                if not self._wait_for_button("templates/attack_button", timeout=30):
-                    log.warning("Timeout waiting for Attack button")
+                # --- Navigate to attack ---
+                if not self.wait_for_button("templates/attack_button", timeout=30):
+                    log.warning("No Attack button")
                     continue
 
                 time.sleep(config.POST_ATTACK_SLEEP)
 
-                if not self._wait_for_button("templates/find_match_button", timeout=30):
-                    log.warning("Timeout waiting for Find Match button")
+                if not self.wait_for_button("templates/find_match_button", timeout=30):
+                    log.warning("No Find Match button")
                     continue
 
-                if not self._wait_for_button("templates/attack"):
-                    log.warning("Could not find Attack button")
+                if not self.wait_for_button("templates/attack"):
+                    log.warning("No Start Battle button")
                     continue
 
                 time.sleep(config.POST_ATTACK_SLEEP)
-                self._screenshot()
+                self.device.take_screenshot(self.screenshot_name)
 
-                # ---------------- Search and select a base ----------------
-                log.info("Searching for base...")
+                # --- Search for a base ---
+                log.info("Searching for suitable base...")
 
-                searches = random.randint(1, config.MAX_BASE_SEARCHES)
-                search_ok = True
-                for attempt in range(1, searches):
-                    log.info(f"Search {attempt + 1}/{searches}: skipping to next base")
-                    if not self._wait_for_button("templates/next_button", timeout=10):
-                        log.warning("Could not find Next button")
-                        search_ok = False
+                base_found = False
+                attempt = 0
+                while not base_found and not self.stop_flag:
+                    attempt += 1
+                    log.info(f"Evaluating base {attempt}")
+                    self.device.take_screenshot(self.screenshot_name)
+
+                    if self.evaluate_base():
+                        base_found = True
+                        break
+
+                    log.info(f"Skipping base {attempt}, searching next...")
+                    if not self.wait_for_button("templates/next_button", timeout=10):
+                        log.warning("No Next button")
                         break
                     time.sleep(random.uniform(*config.SEARCH_NEXT_SLEEP_RANGE))
-                    self._screenshot()
 
-                if not search_ok:
+                if not base_found:
+                    log.warning("No suitable base found, returning home")
+                    self._return_home()
                     continue
 
-                log.info(f"Attacking base (search {searches})")
+                log.info("Found suitable base, attacking")
                 time.sleep(config.POST_ATTACK_SLEEP)
 
-                # ---------------- Adjust the battle view ----------------
+                # --- Adjust battle view ---
                 if config.BATTLE_ZOOM:
-                    log.info("Adjusting battle view...")
                     try:
                         self.device.pinch_zoom(
                             direction=config.BATTLE_ZOOM,
@@ -147,193 +227,259 @@ class CoCBot:
                         self.device.swipe(*config.BATTLE_PAN_SWIPE_2)
                         self.device.swipe(*config.BATTLE_PAN_SWIPE_3)
                     except (RuntimeError, OSError) as e:
-                        log.warning(f"Adjusting battle view failed: {e}")
+                        log.warning(f"View adjust failed: {e}")
                     time.sleep(config.POST_ZOOM_SLEEP)
 
-                # ---------------- Deploy troops / heroes / spells ----------------
+                # --- Deploy units ---
                 self.deployed_heroes = {}
-                self._deploy_units(
-                    "troops",
-                    config.SELECTED_TROOPS,
-                    config.TROOP_LOCATIONS,
-                    final_delay=random.uniform(4, 5),
-                )
-                self._deploy_heroes()
-                self._deploy_units(
-                    "spells",
-                    config.SELECTED_SPELLS,
-                    config.SPELL_LOCATIONS,
-                    between_taps=0.3,
-                    shuffle=False,
-                )
+                self.deploy(config.SELECTED_TROOPS, "troops", config.TROOP_LOCATIONS)
+                self.deploy(config.SELECTED_SPELLS, "spells", config.SPELL_LOCATIONS)
+                self.deploy_heroes(config.HERO_LOCATIONS)
+                self.activate_heroes()
 
-                # ---------------- Trigger hero abilities ----------------
-                self._activate_hero_abilities(config.HERO_ABILITIES)
+                # --- Return home ---
+                self._return_home()
 
-                # ---------------- Return home ----------------
-                log.info("Returning home...")
-                wait_start = time.time()
-                returned = False
-                while time.time() - wait_start < config.RETURN_HOME_TIMEOUT:
-                    if self.stop_flag:
-                        break
-                    if not self._screenshot():
-                        time.sleep(config.RETURN_HOME_TAP_SLEEP)
-                        continue
-
-                    if self.click.detect_and_tap("templates/return_home"):
-                        time.sleep(config.RETURN_HOME_TAP_SLEEP)
-                        self.click.detect_and_tap("templates/okay_button")
-                        returned = True
-                        break
-
-                    time.sleep(config.RETURN_HOME_TAP_SLEEP)
-
-                if not returned:
-                    log.warning("Force ending battle...")
-                    self._screenshot()
-                    self.click.detect_and_tap("templates/end_battle")
-                    self.click.detect_and_tap("templates/surrender_button")
-                    time.sleep(config.POST_ATTACK_SLEEP)
-                    self._screenshot()
-                    self.click.detect_and_tap("templates/return_home")
-
-                # ---------------- Session summary (every 5 loops) ----------------
+                # --- Session summary (every 5 loops) ---
                 if self.loop_count % 5 == 0:
-                    elapsed_min = (time.time() - self.start_time) / 60
+                    elapsed = int(time.time() - self.start_time)
+                    mins, secs = divmod(elapsed, 60)
                     log.info(
-                        f"===== SESSION SUMMARY =====\n"
-                        f"Attacks: {self.loop_count}\n"
-                        f"Runtime: {elapsed_min:.1f} min\n"
-                        f"==========================="
+                        f"===== SUMMARY =====\n"
+                        f"Attacks: {self.attacks}/{self.loop_count} bases\n"
+                        f"Gold: {self.total_gold:,} | Elixir: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}\n"
+                        f"Runtime: {mins}:{secs:02d}\n"
+                        f"===================="
                     )
 
             except Exception as e:  # noqa: BLE001
-                # Keep the loop alive; failures are counted and abort when too many.
-                self._record_failure()
-                log.error(f"Error in loop: {e}")
+                self.failures += 1
+                if self.failures >= config.MAX_CONSECUTIVE_FAILURES:
+                    log.warning(f"Aborting: {config.MAX_CONSECUTIVE_FAILURES} failures")
+                    self.stop_flag = True
+                log.error(f"Loop error: {e}")
                 if self.stop_flag:
                     break
                 time.sleep(5)
 
-        log.info("Bot stopped gracefully.")
-
-    # ------------------------------------------------------------- deploy units
-
-    def _deploy_heroes(self) -> None:
-        """Deploy every selected hero, remembering their button positions."""
-        self.deployed_heroes = {}
-        self._deploy_units(
-            "hero",
-            config.SELECTED_HEROES,
-            config.HERO_LOCATIONS,
-            track_buttons=True,
+        elapsed = int(time.time() - self.start_time)
+        mins, secs = divmod(elapsed, 60)
+        log.info(
+            f"===== FINAL SUMMARY =====\n"
+            f"Attacks: {self.attacks}/{self.loop_count} bases\n"
+            f"Gold: {self.total_gold:,} | Elixir: {self.total_elixir:,} | DE: {self.total_dark_elixir:,}\n"
+            f"Runtime: {mins}:{secs:02d}\n"
+            f"=========================="
         )
+        log.info("Bot stopped.")
 
-    def _activate_hero_abilities(self, name_partials: list[str] | None = None) -> None:
-        """Trigger abilities for deployed heroes.
+    def _return_home(self) -> None:
+        """Wait for the return-home button after battle."""
+        wait_start = time.time()
+        event_taps = 0
 
-        `name_partials` are case-insensitive substrings matched against the
-        template folder names; every matching hero gets its ability tapped.
-        Defaults to activating every deployed hero when no names are given.
-        """
-        partials = name_partials or list(self.deployed_heroes)
-        for name, coords in self.deployed_heroes.items():
-            if any(partial.lower() in name.lower() for partial in partials):
-                log.info(f"Activating {name} ability!")
-                self.click.tap(coords[0], coords[1])
+        while time.time() - wait_start < config.RETURN_HOME_TIMEOUT:
+            if self.stop_flag:
+                return
+            if not self.device.take_screenshot(self.screenshot_name):
+                time.sleep(config.RETURN_HOME_TAP_SLEEP)
+                continue
 
-    def _deploy_units(
+            if self.click.detect_and_tap("templates/return_home"):
+                log.info("Battle ended, returning home")
+                time.sleep(config.RETURN_HOME_TAP_SLEEP)
+                self.click.detect_and_tap("templates/okay_button")
+                self.click.detect_and_tap("templates/okay_button")
+                self.click.detect_and_tap("templates/continue")
+                self.click.detect_and_tap("templates/continue")
+                self.click.detect_and_tap("templates/okay_button")
+                return
+
+            if event_taps < config.MAX_EVENT_TAPS and self.click.detect_and_tap(
+                "templates/event_tap"
+            ):
+                event_taps += 1
+                log.info(f"Event tap dismissed ({event_taps}/{config.MAX_EVENT_TAPS})")
+
+            time.sleep(config.RETURN_HOME_TAP_SLEEP)
+
+        # Fallback: force end the battle
+        log.warning("Timed out, force ending")
+        self.device.take_screenshot(self.screenshot_name)
+        self.click.detect_and_tap("templates/end_battle")
+        self.click.detect_and_tap("templates/surrender_button")
+        time.sleep(config.POST_ATTACK_SLEEP)
+        self.device.take_screenshot(self.screenshot_name)
+        self.click.detect_and_tap("templates/return_home")
+
+    def deploy(
         self,
-        kind: str,
         units: dict[str, int],
+        category: str,
         locations: list[tuple[int, int]],
-        between_taps: tuple[float, float] | float = (0.1, 0.2),
-        shuffle: bool = True,
-        track_buttons: bool = False,
-        final_delay: float | None = None,
     ) -> None:
-        """Deploy units from a template folder to the battlefield.
-
-        `kind` selects the template subfolder (troops/hero/spells) and
-        `units` maps each template folder name to how many to deploy.
-        When `track_buttons` is set, each deployed unit's button position is
-        remembered in ``self.deployed_heroes`` for ability triggering.
-        """
+        """Deploy troops or spells to the battlefield."""
         plan = {k: v for k, v in units.items() if v > 0}
         if not plan:
-            log.info("No units to deploy!")
+            log.info(f"No {category} to deploy")
             return
 
-        locs = locations[:]
-        if shuffle:
-            random.shuffle(locs)
+        log.info(f"Deploy {sum(plan.values())} {category}")
 
+        locs = locations[:]
+        random.shuffle(locs)
         loc_index = 0
+
         for folder, count in plan.items():
-            coords = self.device.detect_button(f"templates/{kind}/{folder}")
+            if category == "troops":
+                time.sleep(1)
+
+            if not self.device.take_screenshot(self.screenshot_name):
+                log.warning(f"Screenshot failed before {folder}")
+                continue
+
+            coords = self.device.detect_button(f"templates/{category}/{folder}")
             if not coords:
                 log.warning(f"{folder} button not found")
                 continue
 
+            log.info(f"Deploying {folder} x{count}")
             self.click.tap(coords[0], coords[1])
-            if track_buttons:
-                self.deployed_heroes[folder] = coords
+            time.sleep(config.SELECTION_UI_DELAY)
 
-            log.info(f"Deploying {folder} ({count})...")
-            time.sleep(config.SELECTION_UI_DELAY)  # Wait for selection UI
-
-            for _ in range(count):
+            for i in range(count):
                 loc = locs[loc_index % len(locs)]
-                self.click.tap(loc[0], loc[1])
-                if track_buttons:
-                    time.sleep(random.uniform(*HERO_TAP_DELAY_RANGE))
-                elif isinstance(between_taps, tuple):
-                    time.sleep(random.uniform(*between_taps))
-                else:
-                    time.sleep(between_taps)
+                drop_x = loc[0] - 20 if category == "spells" else loc[0]
+                drop_y = loc[1] - 20 if category == "spells" else loc[1]
+                self.click.tap(drop_x, drop_y)
+                time.sleep(0.15)
                 loc_index += 1
 
-        if final_delay:
-            time.sleep(final_delay)
+        time.sleep(random.uniform(2, 3))
 
-    # ------------------------------------------------------------- device helpers
+    def deploy_heroes(
+        self,
+        locations: list[tuple[int, int]],
+    ) -> None:
+        """Scan templates/hero/, detect all available heroes, deploy found ones."""
+        hero_dir = "templates/hero"
+        hero_folders = [
+            d for d in os.listdir(hero_dir) if os.path.isdir(os.path.join(hero_dir, d))
+        ]
+        if not hero_folders:
+            log.info("No hero templates found")
+            return
 
-    def _screenshot(self) -> bool:
-        """Takes a screenshot, tracking device failures on the way."""
-        ok = self.device.take_screenshot()
-        if ok:
-            self.consecutive_failures = 0
-        else:
-            self._record_failure()
-        return ok
+        if not self.device.take_screenshot(self.screenshot_name):
+            log.warning("Screenshot failed before hero deploy")
+            return
 
-    def _record_failure(self) -> None:
-        """Counts a device failure and aborts after too many in a row."""
-        self.consecutive_failures += 1
-        if self.consecutive_failures >= config.MAX_CONSECUTIVE_FAILURES:
-            self._abort(f"{config.MAX_CONSECUTIVE_FAILURES} consecutive failures")
+        locs = locations[:]
+        random.shuffle(locs)
+        loc_index = 0
 
-    def _abort(self, reason: str) -> None:
-        """Stops the bot and reports why."""
-        log.warning(f"Stopping bot: {reason}")
-        self.stop_flag = True
+        for folder in hero_folders:
+            coords = self.device.detect_button(f"{hero_dir}/{folder}")
+            if not coords:
+                log.info(f"{folder} not available")
+                continue
 
-    def _wait_for_button(
+            log.info(f"Deploying {folder}")
+            self.click.tap(coords[0], coords[1])
+            self.deployed_heroes[folder] = coords
+            time.sleep(config.SELECTION_UI_DELAY)
+
+            loc = locs[loc_index % len(locs)]
+            self.click.tap(loc[0], loc[1])
+            time.sleep(random.uniform(*HERO_TAP_DELAY))
+            loc_index += 1
+
+    def activate_heroes(self) -> None:
+        """Trigger abilities for deployed heroes in random order with random delays."""
+        if not self.deployed_heroes:
+            return
+        heroes = list(self.deployed_heroes.items())
+        random.shuffle(heroes)
+        for name, coords in heroes:
+            time.sleep(random.uniform(*config.ABILITY_DELAY_RANGE))
+            log.info(f"Ability: {name}")
+            self.click.tap(coords[0], coords[1])
+
+    def evaluate_base(self) -> bool:
+        """Evaluate base resources using OCR. Returns True if loot meets thresholds."""
+        img = cv2.imread(self.screenshot_name)
+        if img is None:
+            log.warning("Failed to load screenshot for evaluation")
+            return True
+
+        gold = self._read_resource(img, config.GOLD_CROP_REGION)
+        elixir = self._read_resource(img, config.ELIXIR_CROP_REGION)
+        dark_elixir = self._read_resource(img, config.DARK_ELIXIR_CROP_REGION)
+
+        self._save_resource_bboxes(img, gold, elixir, dark_elixir)
+
+        log.info(f"Loot: {gold} gold, {elixir} elixir, {dark_elixir} dark elixir")
+
+        if gold < config.MIN_GOLD:
+            log.info(f"Skipping: gold {gold} < {config.MIN_GOLD}")
+            return False
+        if elixir < config.MIN_ELIXIR:
+            log.info(f"Skipping: elixir {elixir} < {config.MIN_ELIXIR}")
+            return False
+        if config.MIN_DARK_ELIXIR > 0 and dark_elixir < config.MIN_DARK_ELIXIR:
+            log.info(f"Skipping: dark elixir {dark_elixir} < {config.MIN_DARK_ELIXIR}")
+            return False
+
+        self.total_gold += gold
+        self.total_elixir += elixir
+        self.total_dark_elixir += dark_elixir
+        self.attacks += 1
+        log.info(f"Base meets resource thresholds (attack #{self.attacks})")
+        return True
+
+    def _read_resource(self, img: np.ndarray, region: tuple[int, int, int, int]) -> int:
+        """Read a single resource value from its bounding box."""
+        x, y, w, h = region
+        crop = img[y : y + h, x : x + w]
+        results = self.ocr_reader.readtext(crop)
+        for _, text, _ in results:
+            nums = [c for c in text if c.isdigit()]
+            if nums:
+                return int("".join(nums))
+        return 0
+
+    def _save_resource_bboxes(
+        self,
+        img: np.ndarray,
+        gold: int,
+        elixir: int,
+        dark_elixir: int,
+    ) -> None:
+        """Draw and save bounding boxes for resource regions."""
+        vis = img.copy()
+        regions = [
+            (config.GOLD_CROP_REGION, f"Gold: {gold}", (0, 215, 255)),
+            (config.ELIXIR_CROP_REGION, f"Elixir: {elixir}", (255, 0, 255)),
+            (config.DARK_ELIXIR_CROP_REGION, f"DE: {dark_elixir}", (0, 0, 255)),
+        ]
+        for (x, y, w, h), label, color in regions:
+            cv2.rectangle(vis, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(vis, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+        cv2.imwrite("resource_bboxes.png", vis)
+
+    def wait_for_button(
         self,
         folder: str,
         timeout: int = 30,
         dismiss_okay: bool = True,
     ) -> bool:
-        """Wait for a button to appear.
-
-        Polls until the button is found or `timeout` seconds elapse. When
-        `dismiss_okay` is set, taps the okay button on every miss so stray
-        dialogs don't block the flow.
-        """
+        """Poll screenshots until the button appears or timeout."""
+        button_name = folder.rstrip("/").split("/")[-1]
+        log.info(f"Searching for {button_name}...")
         start = time.time()
+
         while time.time() - start < timeout:
-            if not self._screenshot():
+            if not self.device.take_screenshot(self.screenshot_name):
                 time.sleep(config.BUTTON_POLL_INTERVAL)
                 continue
             if self.click.detect_and_tap(folder):
@@ -341,6 +487,8 @@ class CoCBot:
             if dismiss_okay:
                 self.click.detect_and_tap("templates/okay_button")
             time.sleep(config.BUTTON_POLL_INTERVAL)
+
+        log.warning(f"Timeout: {button_name} not found")
         return False
 
 

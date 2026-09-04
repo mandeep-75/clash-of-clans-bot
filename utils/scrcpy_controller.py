@@ -19,11 +19,11 @@ import threading
 import time
 from collections.abc import Callable
 
-import cv2
 import numpy as np
 
 import config
 from utils.device import select_device
+from utils.logger import log
 from utils.template_detector import TemplateDetector
 
 # --- scrcpy control protocol constants (reference §4, §5) --------------------
@@ -460,6 +460,7 @@ class ScrcpyController(TemplateDetector):
         """
         tx = x + random.randint(-offset, offset)
         ty = y + random.randint(-offset, offset)
+        log.info(f"Tap ({tx}, {ty})")
         down_ok = self.touch(ACTION_DOWN, POINTER_ID_GENERIC_FINGER, tx, ty)
         time.sleep(hold)
         up_ok = self.touch(ACTION_UP, POINTER_ID_GENERIC_FINGER, tx, ty)
@@ -475,6 +476,7 @@ class ScrcpyController(TemplateDetector):
         dt: float = 0.01,
     ) -> None:
         """Performs a swipe from (x1, y1) to (x2, y2)."""
+        log.info(f"Swipe ({x1},{y1}) -> ({x2},{y2})")
         self.touch(ACTION_DOWN, POINTER_ID_GENERIC_FINGER, x1, y1)
         for i in range(1, steps + 1):
             x = x1 + (x2 - x1) * i // steps
@@ -523,6 +525,7 @@ class ScrcpyController(TemplateDetector):
         `direction` "in" spreads the fingers apart (zoom in), "out" brings
         them together (zoom out).
         """
+        log.info(f"Pinch zoom {direction}")
         w, h = self._get_size()
         if not w or not h:
             print("WARNING: screen size unknown, pinch zoom dropped")
@@ -550,19 +553,14 @@ class ScrcpyController(TemplateDetector):
     # -------------------------------------------------------------- screenshots
 
     def take_screenshot(self, local_path=config.SCREENSHOT_NAME) -> bool:
-        """Captures a screenshot from the live video stream.
+        """Captures a screenshot via `adb screencap`.
 
-        Falls back to `adb screencap` if no decoded frame is available yet.
-        On failure the old screenshot file is removed so detection can never
-        act on a stale frame. Returns success.
+        The live video stream is used for latency-free input feedback but its
+        H.264 encoding is unreliable for template matching, so captures always
+        go through ADB screencap. On failure the old screenshot file is
+        removed so detection can never act on a stale frame. Returns success.
         """
-        frame = self._video.latest_frame if self._video else None
-        if frame is not None:
-            if cv2.imwrite(local_path, frame):
-                return True
-            print("Failed to write screenshot frame")
-            self._remove_screenshot(local_path)
-            return False
+        log.info(f"Screenshot taken -> {local_path}")
         return self._fallback_screencap(local_path)
 
     def _remove_screenshot(self, local_path) -> None:

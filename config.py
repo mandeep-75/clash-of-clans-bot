@@ -9,7 +9,7 @@ SCREENSHOT_NAME = "screen.png"
 LOG_FILE = "bot_session_log.txt"
 
 # Tap jitter: each tap lands randomly within ± this many pixels (0-5 px)
-TAP_OFFSET_MAX = 5
+TAP_OFFSET_MAX = 3
 
 # =============================================================================
 # DETECTION
@@ -48,22 +48,41 @@ CLICK_LOG = ""
 # =============================================================================
 RETURN_HOME_TIMEOUT = 210  # Maximum time to wait for return home button after battle
 
-# Max searches per attack: bot attacks a random base after 1..this many searches
-MAX_BASE_SEARCHES = 3
+# Seconds between polls when continuously checking for event tap button during battle
+EVENT_TAP_POLL_INTERVAL = 0.5
+
+# Max times to dismiss event tap popups before giving up
+MAX_EVENT_TAPS = 3
+
+# =============================================================================
+# BASE EVALUATION (resource thresholds for attack/skip decision)
+# =============================================================================
+# Minimum available loot to attack a base
+MIN_GOLD = 800000
+MIN_ELIXIR = 800000
+MIN_DARK_ELIXIR = 0  # Set to 0 to ignore dark elixir
+# OCR language for resource detection
+OCR_LANGUAGES = ["en"]
+# Separate bounding boxes for each resource (x, y, w, h)
+GOLD_CROP_REGION = (64, 95, 140, 35)
+ELIXIR_CROP_REGION = (64, 135, 140, 35)
+DARK_ELIXIR_CROP_REGION = (64, 170, 140, 35)
 
 # =============================================================================
 # FLOW PACING (sleeps between bot actions)
 # =============================================================================
 # Wait for the unit-selection UI to appear after picking a troop/spell/hero
-SELECTION_UI_DELAY = 0.3
+SELECTION_UI_DELAY = 0.15
 # Pause after reaching the attack screen and after tapping Attack
-POST_ATTACK_SLEEP = 2
+POST_ATTACK_SLEEP = 1
 # Pause after pinch-zooming at battle start
-POST_ZOOM_SLEEP = 1.5
+POST_ZOOM_SLEEP = 0.5
 # Pause after tapping Return Home (wait for the battle-end dialog)
-RETURN_HOME_TAP_SLEEP = 3
+RETURN_HOME_TAP_SLEEP = 1
 # Range of random pauses between "Next" base searches
-SEARCH_NEXT_SLEEP_RANGE = (4.5, 5.0)
+SEARCH_NEXT_SLEEP_RANGE = (2, 3)
+# Range of random delays (seconds) between hero ability activations
+ABILITY_DELAY_RANGE = (1.0, 2.0)
 
 # =============================================================================
 # ARMY COMPOSITION
@@ -91,82 +110,70 @@ SELECTED_HEROES = {
     "minion_prince": 1,
     "rolaychampion": 1,
 }
-
-# Hero abilities to trigger after deployment (template folder-name partials)
-HERO_ABILITIES = ["grand_warden"]
-
 # =============================================================================
 # DEPLOYMENT COORDINATES
 # =============================================================================
 
 TROOP_LOCATIONS = [
-    (226, 614),
-    (300, 568),
-    (354, 530),
-    (394, 516),
-    (432, 470),
-    (484, 430),
-    (530, 396),
-    (572, 364),
-    (616, 332),
-    (650, 304),
-    (704, 262),
-    (738, 242),
-    (804, 200),
-    (838, 162),
-    (882, 134),
-    (928, 104),
-    (836, 158),
-    (776, 200),
-    (718, 246),
-    (646, 296),
-    (610, 332),
-    (554, 380),
-    (512, 406),
-    (448, 454),
-    (394, 496),
-    (338, 532),
-    (256, 602),
-    (220, 624),
-    (298, 560),
-    (358, 516),
-    (422, 486),
-    (506, 430),
-    (588, 360),
-    (650, 302),
-    (754, 260),
+    (151, 409),
+    (200, 379),
+    (236, 353),
+    (263, 344),
+    (288, 313),
+    (323, 287),
+    (353, 264),
+    (381, 243),
+    (411, 221),
+    (433, 203),
+    (469, 175),
+    (492, 161),
+    (536, 133),
+    (559, 108),
+    (588, 89),
+    (619, 69),
+    (557, 105),
+    (517, 133),
+    (479, 164),
+    (431, 197),
+    (407, 221),
+    (369, 253),
+    (341, 271),
+    (299, 303),
+    (263, 331),
+    (225, 355),
+    (171, 401),
+    (147, 416),
+    (199, 373),
+    (239, 344),
+    (281, 324),
+    (337, 287),
+    (392, 240),
+    (433, 201),
+    (503, 173),
 ]
 
 SPELL_LOCATIONS = [
-    (588, 272),
-    (494, 395),
-    (583, 205),
-    (636, 395),
-    (632, 500),
+    (408, 399),
+    (455, 352),
+    (528, 319),
+    (595, 273),
+    (712, 276),
+    (645, 357),
+    (539, 415),
 ]
 
 HERO_LOCATIONS = [
-    (149, 320),
-    (194, 379),
-    (214, 261),
-    (157, 325),
-    (214, 261),
-    (646, 296),
-    (610, 332),
-    (554, 380),
-    (512, 406),
-    (448, 454),
-    (394, 496),
+    (431, 197),
+    (407, 221),
+    (369, 253),
+    (341, 271),
+    (299, 303),
+    (263, 331),
 ]
 
 # =============================================================================
 # SCRCPY CONTROL
 # =============================================================================
-# Control backend used by the bot:
-#   "scrcpy" -> scrcpy control protocol + live video-stream screenshots
-#               (see SCRCPY_BOT_REFERENCE.md). Recommended.
-#   "adb"    -> fall back to ADB `input` / `screencap` commands.
-CONTROL_MODE = "scrcpy"
 
 # scrcpy server / tunnel settings
 SCRCPY_PORT = 27183  # Local TCP port for the adb reverse tunnel
@@ -180,11 +187,11 @@ SCRCPY_DEVICE_SERVER_PATH = "/data/local/tmp/scrcpy-server.jar"  # Device path
 #   "out" -> fingers close together (zoom out)
 #   ""    -> disabled
 BATTLE_ZOOM = "out"
-ZOOM_START_DIST = 400  # Initial distance between fingers (px)
-ZOOM_END_DIST = 320  # Final distance between fingers (px)
+ZOOM_START_DIST = 267  # Initial distance between fingers (px)
+ZOOM_END_DIST = 213  # Final distance between fingers (px)
 ZOOM_STEPS = 25  # Number of move frames
 
 # Pan swipes after zooming: (x1, y1, x2, y2, steps, dt). Swipe left, then back.
-BATTLE_PAN_SWIPE_1 = (250, 300, 600, 300, 15, 0.01)  # Swipe left to right
-BATTLE_PAN_SWIPE_2 = (300, 250, 300, 600, 15, 0.01)  # Swipe top to bottom
-BATTLE_PAN_SWIPE_3 = (300, 200, 300, 650, 15, 0.01)  # Swipe top to bottom (more)
+BATTLE_PAN_SWIPE_1 = (167, 200, 400, 200, 15, 0.01)  # Swipe left to right
+BATTLE_PAN_SWIPE_2 = (200, 167, 200, 400, 15, 0.01)  # Swipe top to bottom
+BATTLE_PAN_SWIPE_3 = (200, 133, 200, 433, 15, 0.01)  # Swipe top to bottom (more)
